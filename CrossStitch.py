@@ -105,7 +105,7 @@ class PointCollection:
 
         return distance_matrix
 
-
+    @measure_time
     def fill_collection(self, pattern):
 
         self.n = len(pattern)
@@ -175,7 +175,7 @@ class PointCollection:
 
         eprint("Average path length: " + str(apl/nvp))
 
-    def nearest_neighbour_single_path_optimize(self, path):
+    def nearest_neighbour_single_path_optimize(self, path, letter_index):
         """
         Perform a nearest neighbour optimization of a single path.
         """
@@ -203,8 +203,10 @@ class PointCollection:
                 if visited_points[i] == True:
                     continue
                 
-                p2 = path[i]
-                d = Point.distance(current_point, p2)
+                cpb = current_point.b
+                p2b = path[i].b
+
+                d = self.distance_matrixes[letter_index][cpb][p2b]
                 if d < min_d:
                     min_d = d
                     cpi = i
@@ -218,7 +220,7 @@ class PointCollection:
 
         return minimized_path
 
-    
+    @measure_time
     def two_opt_single_path_optimize(self, path, letter_index):
         """
         Perform a 2-opt optimization of a single path.
@@ -294,7 +296,7 @@ class PointCollection:
         """
         for letter_index in range(NUMBER_OF_LETTERS):
             path = self.point_collection[letter_index]
-            self.point_collection[letter_index] = self.nearest_neighbour_single_path_optimize(path)
+            self.point_collection[letter_index] = self.nearest_neighbour_single_path_optimize(path, letter_index)
 
 
     @measure_time
@@ -304,7 +306,144 @@ class PointCollection:
             path = self.point_collection[letter_index]
             self.point_collection[letter_index] = self.two_opt_single_path_optimize(path, letter_index)
 
+    """
+    Stitch rules and defintions
 
+    TL     TR
+    +-----+
+    |     |
+    |     |
+    |     |
+    +-----+
+    BL     BR
+
+    TL - Top Left
+    TR - Top Right
+    BL - Bottom Left
+    BR - Bottom Right
+
+    Possible stitchs: 
+    1. BL->TR->TL->BR
+    2. BL->TR->BR->TL
+
+    3. TR->BL->TL->BR
+    4. TR->BL->BR->TL
+
+    5. TL->BR->BL->TR
+    6. TL->BR->TR->BL
+
+    7. BR->TL->BL->TR
+    8. BR->TL->TR->BL
+
+    """    
+
+    def x_y_to_corners(self, x, y):
+        """
+        x and y always mark the Top Left (TL) corner.
+        """
+        tr_x = x + 1
+        tr_y = y
+
+        bl_x = x
+        bl_y = y + 1
+
+        br_x = x + 1
+        br_y = y + 1
+
+        tl_x = x
+        tl_y = y
+
+        corners = (tl_x, tl_y, 
+                   tr_x, tr_y,
+                   bl_x, bl_y,
+                   br_x, br_y,)
+
+        return corners
+
+    def tr_bl_br_tl(self, x, y):
+
+        tl_x, tl_y, tr_x, tr_y, bl_x, bl_y, br_x, br_y = self.x_y_to_corners(x, y)
+        
+        # Permute the output
+        stitch_x = (tr_x, bl_x, br_x, tl_x)
+        stitch_y = (tr_y, bl_y, br_y, tl_y)
+
+        return stitch_x, stitch_y
+
+
+    def tr_bl_tl_br(self, x, y):
+
+        tl_x, tl_y, tr_x, tr_y, bl_x, bl_y, br_x, br_y = self.x_y_to_corners(x, y)
+        
+        # Permute the output
+        stitch_x = (tr_x, bl_x, tl_x, br_x)
+        stitch_y = (tr_y, bl_y, tl_y, br_y)
+
+        return stitch_x, stitch_y
+
+    def tl_br_bl_tr(self, x, y):
+
+        tl_x, tl_y, tr_x, tr_y, bl_x, bl_y, br_x, br_y = self.x_y_to_corners(x, y)
+        
+        # Permute the output
+        stitch_x = (tl_x, br_x, bl_x, tr_x)
+        stitch_y = (tl_y, br_y, bl_y, tr_y)
+
+        return stitch_x, stitch_y
+
+    def tl_br_tr_bl(self, x, y):
+
+        tl_x, tl_y, tr_x, tr_y, bl_x, bl_y, br_x, br_y = self.x_y_to_corners(x, y)
+        
+        # Permute the output
+        stitch_x = (tl_x, br_x, tr_x, bl_x)
+        stitch_y = (tl_y, br_y, tr_y, bl_y)
+
+        return stitch_x, stitch_y
+
+    def br_tl_tr_bl(self, x, y):
+
+        tl_x, tl_y, tr_x, tr_y, bl_x, bl_y, br_x, br_y = self.x_y_to_corners(x, y)
+        
+        # Permute the output
+        stitch_x = (br_x, tl_x, tr_x, bl_x)
+        stitch_y = (br_y, tl_y, tr_y, bl_y)
+
+        return stitch_x, stitch_y
+
+    def br_tl_bl_tr(self, x, y):
+
+        tl_x, tl_y, tr_x, tr_y, bl_x, bl_y, br_x, br_y = self.x_y_to_corners(x, y)
+        
+        # Permute the output
+        stitch_x = (br_x, tl_x, bl_x, tr_x)
+        stitch_y = (br_y, tl_y, bl_y, tr_y)
+
+        return stitch_x, stitch_y
+
+
+    def bl_tr_tl_br(self, x, y):
+
+        tl_x, tl_y, tr_x, tr_y, bl_x, bl_y, br_x, br_y = self.x_y_to_corners(x, y)
+        
+        # Permute the output
+        stitch_x = (bl_x, tr_x, tl_x, br_x)
+        stitch_y = (bl_y, tr_y, tl_y, br_y)
+
+        return stitch_x, stitch_y
+
+    def bl_tr_br_tl(self, x, y):
+
+        tl_x, tl_y, tr_x, tr_y, bl_x, bl_y, br_x, br_y = self.x_y_to_corners(x, y)
+        
+        # Permute the output
+        stitch_x = (bl_x, tr_x, br_x, tl_x)
+        stitch_y = (bl_y, tr_y, br_y, tl_y)
+
+        return stitch_x, stitch_y
+
+
+    @measure_time
     def make_simple_stitchs(self):
         
         ret = []
@@ -320,12 +459,42 @@ class PointCollection:
             ret.append(letter)
 
             # eprint("Number of points to append x 4: " + str(n_points*4))
+
+            fp_x = -1
+            fp_y = -1
+
+            stitich_functions = [self.tr_bl_tl_br,
+                                 self.tl_br_bl_tr,
+                                 self.tl_br_tr_bl,
+                                 self.br_tl_tr_bl,
+                                 self.br_tl_bl_tr,
+                                 self.bl_tr_tl_br,
+                                 self.bl_tr_br_tl]
+
+            # This is the simplest most possible stitching method.
+            # Requires optimization.
             for p in path:
-                ret.append(str(p.x+1) + " " + str(p.y))
-                ret.append(str(p.x) + " " + str(p.y+1))
-                ret.append(str(p.x+1) + " " + str(p.y+1))
-                ret.append(str(p.x) + " " + str(p.y))
+
+                stitch_x, stitch_y = self.tr_bl_br_tl(p.x, p.y)
+
+                # The starting point of a new stitch must be different from
+                # the ending point of the previous stitch.
+                if (stitch_x[0] == fp_x) and (stitch_y[0] == fp_y):
+                    index = 0
+                    while True:
+                        stitch_x, stitch_y = stitich_functions[index](p.x, p.y)
+                        if (stitch_x[0] != fp_x) and (stitch_y[0] != fp_y):
+                            break
+                        index = index + 1
+
+                ret.append(str(stitch_x[0]) + " " + str(stitch_y[0]))
+                ret.append(str(stitch_x[1]) + " " + str(stitch_y[1]))
+                ret.append(str(stitch_x[2]) + " " + str(stitch_y[2]))
+                ret.append(str(stitch_x[3]) + " " + str(stitch_y[3]))
                 
+                fp_x = stitch_x[3]
+                fp_y = stitch_y[3]
+
         return ret
 
 
@@ -349,11 +518,11 @@ class CrossStitch:
         #point_collection.eprint()
         point_collection.eprint_collection_path_lengths()
 
-        point_collection.two_opt_all_path_minimize()
-        eprint("\n Print minimized paths (2 - opt) \n")
+        #point_collection.two_opt_all_path_minimize()
+        #eprint("\n Print minimized paths (2 - opt) \n")
         #point_collection.eprint()
-        point_collection.eprint_collection_path_lengths()
-
+        #point_collection.eprint_collection_path_lengths()
+ 
         ret = []
         flag = True
 
@@ -380,10 +549,10 @@ class CrossStitch:
 
 # -------8<------- end of solution submitted to the website -------8<-------
 
-S = int(input())
+S = int(raw_input())
 pattern = []
 for i in range(S):
-    pattern.append(input().strip())
+    pattern.append(raw_input().strip())
 
 cs = CrossStitch()
 ret = cs.embroider(pattern)
@@ -391,7 +560,3 @@ print(len(ret))
 for st in ret:
     print(st)
 sys.stdout.flush()
-
-
-
-
