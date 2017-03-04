@@ -1,14 +1,37 @@
 import string
 import sys
 import math
+import random
+import time
 
-
+LOCAL_RANDOM_SEED = 1
+LOCAL_INFINITY = 4294967296 - 1 # 2**32 - 1
 NUMBER_OF_LETTERS = len(string.ascii_lowercase)
 
+#random.seed(LOCAL_RANDOM_SEED)
+
+# Due to the website's acceptance of only a single file
+# all functions and classes are placed in one file.
 
 def eprint(s="", end="\n"):
+    """
+    This is a custom print function since
+    only logging into the standard error is allowed.
+    """
     sys.stderr.write(s + end)
     #pass
+
+def measure_time(func):
+    """
+    Decorator to measure the execution time of a function.
+    """
+    def func_wrapper(*args, **kwargs):
+        start = time.time()
+        ret = func(*args, **kwargs)
+        stop = time.time()
+        eprint("Time spent in function " + func.__name__ + ": " + str(stop - start))
+        return ret
+    return func_wrapper
 
 def get_letter_index(letter):
     """
@@ -24,10 +47,11 @@ def revert_get_letter_index(letter_index):
 
 
 class Point:
-    def __init__(self, x=-1, y=-1, l=""):
+    def __init__(self, x=-1, y=-1, l="", b=-1):
         self.x = x
         self.y = y
         self.l = l # l stands for Letter
+        self.b = b # b stands for Badge (makes the points distinguishable)
 
     def __str__(self):
         return "x: %2s, y: %2s, l: %2s" % (str(self.x), str(self.y), self.l)
@@ -52,6 +76,26 @@ class PointCollection:
             eprint("Printing points for letter: %s" % revert_get_letter_index(i))
             for j in range(len(self.point_collection[i])):
                 eprint(str(self.point_collection[i][j]))
+    
+    def eprint_square_matrix(self, matrix):
+        n = len(matrix)
+        eprint("Matrix size: %d x %d" % (n, n))
+        for i in range(n):
+            for j in range(n):
+                eprint("%4s " % (str(round(matrix[i][j],1))), " ")
+            eprint()
+
+
+    def get_distance_matrix(self, path):
+        n_points = len(path)
+        distance_matrix = [[0.0 for j in range(n_points)] for i in range(n_points)]
+
+        for i in range(n_points):
+            for j in range(n_points):
+                distance_matrix[i][j] = Point.distance(path[i], path[j])
+
+        return distance_matrix
+
 
     def fill_collection(self, pattern):
 
@@ -65,15 +109,35 @@ class PointCollection:
                     p = Point(i, j, pattern[i][j])       
                     self.point_collection[letter_index].append(p)
 
+            
+        # Calculate distance matrixes
+        self.distance_matrixes = [None for i in range(NUMBER_OF_LETTERS)]
+        for letter_index in range(NUMBER_OF_LETTERS):
+            path = self.point_collection[letter_index]            
+            n_points = len(path)
+
+            if n_points == 0:
+                continue
+
+            # Badge the points (make them distinguishable).
+            # During the calculation the points are swaped
+            # between each other. To make use of the distance matrix
+            # we need to distinguish them.
+            for j in range(n_points):
+                self.point_collection[letter_index][j].b = j
+
+            self.distance_matrixes[letter_index] = self.get_distance_matrix(path) 
+            # self.eprint_square_matrix(self.distance_matrixes[letter_index])
+
 
     def get_path_length_in_collection(self, letter_index):
-        n_pixels = len(self.point_collection[letter_index])
+        n_points = len(self.point_collection[letter_index])
         
-        if n_pixels == 0:
+        if n_points == 0:
             return -1.0
 
         length = 0.0
-        for i in range(1, n_pixels):
+        for i in range(1, n_points):
             p1 = self.point_collection[letter_index][i - 1]
             p2 = self.point_collection[letter_index][i]
 
@@ -86,31 +150,197 @@ class PointCollection:
 
     def eprint_collection_path_lengths(self):
         
+        apl = 0.0 # Average Path Length
+        nvp = 0 # Number of Valid Paths
         for letter_index in range(NUMBER_OF_LETTERS):
             pl = self.get_path_length_in_collection(letter_index)
+            if pl == -1:
+                continue
+
+            apl = apl + pl
+            nvp = nvp + 1
+
             letter = revert_get_letter_index(letter_index)
             eprint(letter + " path length: " + str(pl))
 
+        eprint("Average path length: " + str(apl/nvp))
 
-    def minimize_path_lengths(self):
-        pass
+    def nearest_neighbour_single_path_optimize(self, path):
+        """
+        Perform a nearest neighbour optimization of a single path.
+        """
+
+        n_points = len(path)
+
+        if n_points == 0:
+            return path
+            
+        minimized_path = [Point() for i in range(n_points)]
+        visited_points = [False for i in range(n_points)]
+
+        # The starting point is chosen at random.
+        # It is also the first current point.
+        cpi = random.randint(0, n_points - 1) # Current Point Index
+        nocp = 0 # Number Of Checked Points
+        current_point = path[cpi]
+        minimized_path[nocp] = current_point
+        visited_points[cpi] = True
+
+        while (nocp != n_points - 1):
+            
+            min_d = LOCAL_INFINITY
+            for i in range(n_points):
+                if visited_points[i] == True:
+                    continue
+                
+                p2 = path[i]
+                d = Point.distance(current_point, p2)
+                if d < min_d:
+                    min_d = d
+                    cpi = i
+
+            current_point = path[cpi]
+            visited_points[cpi] = True
+            nocp = nocp + 1
+            minimized_path[nocp] = current_point
+
+        #self.point_collection[letter_index] = minimized_path
+
+        return minimized_path
+
+    
+    def two_opt_single_path_optimize(self, path, letter_index):
+        """
+        Perform a 2-opt optimization of a single path.
+
+        Path should be a single entry (list) from self.point_collection
+        i. e. when passing path = self.point_collection[letter_index]
+        """
+
+        imp = 0
+        n_points = len(path)
+
+        if n_points == 0:
+            return path
+
+        while imp < 2:
+
+            for i in range(1, n_points - 1):
+                for j in range(i + 1, n_points):
+       
+                    d_before_prev = 0.0
+                    d_before_post = 0.0
+
+                    d_after_prev = 0.0
+                    d_after_post = 0.0
+
+                    if j != (n_points - 1):
+                        #d_before_prev = Point.distance(path[i - 1], path[i])
+                        #d_before_post = Point.distance(path[j], path[j + 1])
+
+                        #d_after_prev = Point.distance(path[i - 1], path[j])
+                        #d_after_post = Point.distance(path[i], path[j + 1])
+
+                        #eprint("Print")
+                        #eprint(str(d_before_prev))
+                        #eprint(str(self.distance_matrixes[letter_index][path[i - 1].b][path[i].b]))
+
+                        
+                        i1b = path[i - 1].b 
+                        ib = path[i].b
+                        d_before_prev = self.distance_matrixes[letter_index][i1b][ib]
+
+                        jb = path[j].b 
+                        j1b = path[j + 1].b
+                        d_before_post = self.distance_matrixes[letter_index][jb][j1b]
 
 
-    def
+                        i1b = path[i - 1].b
+                        jb = path[j].b
+                        d_after_prev = self.distance_matrixes[letter_index][i1b][jb]
+
+                        ib = path[i].b
+                        j1b = path[j + 1].b
+                        d_after_post = self.distance_matrixes[letter_index][ib][j1b]
+
+                    else:
+                        # d_before_prev = Point.distance(path[i - 1], path[i])
+                        # d_after_prev = Point.distance(path[i - 1], path[j])
+
+                        i1b = path[i - 1].b 
+                        ib = path[i].b
+                        d_before_prev = self.distance_matrixes[letter_index][i1b][ib]
+
+                        i1b = path[i - 1].b
+                        jb = path[j].b
+                        d_after_prev = self.distance_matrixes[letter_index][i1b][jb]
+
+
+                    d1 = d_before_prev + d_before_post
+                    d2 = d_after_prev + d_after_post
+
+
+                    if (d1 - d2) > 0.0:
+                        imp = 0
+
+                        part_1 = path[0:i]
+                        part_2 = path[i:(j + 1)]
+                        part_3 = path[(j + 1):]
+
+                        part_2 = part_2[::-1] # reverse subpath
+
+                        path = part_1 + part_2 + part_3
+        
+            imp = imp + 1
+
+        return path
+
+    @measure_time
+    def nearest_neighbour_all_path_minimize(self):
+        """
+        Perform the nearest neigbour optimization on all paths in self.point_collection.
+        """
+        for letter_index in range(NUMBER_OF_LETTERS):
+            path = self.point_collection[letter_index]
+            self.point_collection[letter_index] = self.nearest_neighbour_single_path_optimize(path)
+
+
+    @measure_time
+    def two_opt_all_path_minimize(self):
+
+        for letter_index in range(NUMBER_OF_LETTERS):
+            path = self.point_collection[letter_index]
+            self.point_collection[letter_index] = self.two_opt_single_path_optimize(path, letter_index)
 
 
 class CrossStitch:
+    
+    @measure_time
     def embroider(self, pattern):
 
         N = len(pattern)
         # point_collection = [[] for i in range(NUMBER_OF_LETTERS)]
         point_collection = PointCollection()
         point_collection.fill_collection(pattern)
-
-        # point_collection.eprint()
-
+        
+        eprint("\n Print initial paths \n")
+        #point_collection.eprint()
         point_collection.eprint_collection_path_lengths()
 
+
+        point_collection.nearest_neighbour_all_path_minimize()
+
+
+        eprint("\n Print minimized paths (nearest neighbour) \n")
+        #point_collection.eprint()
+        point_collection.eprint_collection_path_lengths()
+
+        point_collection.two_opt_all_path_minimize()
+
+        eprint("\n Print minimized paths (2 - opt) \n")
+        point_collection.eprint_collection_path_lengths()
+
+        
         ret = []
         S = len(pattern)
         for col in string.ascii_lowercase:
