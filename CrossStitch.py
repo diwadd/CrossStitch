@@ -13,13 +13,15 @@ NUMBER_OF_LETTERS = len(string.ascii_lowercase)
 # Due to the website's acceptance of only a single file
 # all functions and classes are placed in one file.
 
-def eprint(s="", end="\n"):
+def eprint(s="", end="\n", verbose=True):
     """
     This is a custom print function since
     only logging into the standard error is allowed.
     """
-    sys.stderr.write(s + end)
-    #pass
+    if verbose == True:
+        sys.stderr.write(s + end)
+    else:
+        pass
 
 def measure_time(func):
     """
@@ -54,7 +56,7 @@ class Point:
         self.b = b # b stands for Badge (makes the points distinguishable)
 
     def __str__(self):
-        return "x: %2s, y: %2s, l: %2s" % (str(self.x), str(self.y), self.l)
+        return "x: %2s, y: %2s, l: %2s, b: %2s" % (str(self.x), str(self.y), self.l, str(self.b))
 
     @staticmethod
     def distance(p1, p2):
@@ -72,10 +74,13 @@ class PointCollection:
         return self.point_collection[index]
 
     def eprint(self):
-        for i in range(NUMBER_OF_LETTERS):
-            eprint("Printing points for letter: %s" % revert_get_letter_index(i))
-            for j in range(len(self.point_collection[i])):
-                eprint(str(self.point_collection[i][j]))
+        for letter_index in range(NUMBER_OF_LETTERS):
+            eprint("Printing points for letter: %s" % revert_get_letter_index(letter_index))
+            n_points = len(self.point_collection[letter_index])
+
+            eprint("Number of points: " + str(n_points))
+            for j in range(n_points):
+                eprint(str(self.point_collection[letter_index][j]))
     
     def eprint_square_matrix(self, matrix):
         n = len(matrix)
@@ -92,7 +97,11 @@ class PointCollection:
 
         for i in range(n_points):
             for j in range(n_points):
-                distance_matrix[i][j] = Point.distance(path[i], path[j])
+                if i <= j:
+                    continue
+                d = Point.distance(path[i], path[j])
+                distance_matrix[i][j] = d
+                distance_matrix[j][i] = d
 
         return distance_matrix
 
@@ -148,7 +157,7 @@ class PointCollection:
         return length
 
 
-    def eprint_collection_path_lengths(self):
+    def eprint_collection_path_lengths(self, verbose=False):
         
         apl = 0.0 # Average Path Length
         nvp = 0 # Number of Valid Paths
@@ -161,7 +170,8 @@ class PointCollection:
             nvp = nvp + 1
 
             letter = revert_get_letter_index(letter_index)
-            eprint(letter + " path length: " + str(pl))
+            
+            eprint(letter + " path length: " + str(pl), "\n" ,verbose)
 
         eprint("Average path length: " + str(apl/nvp))
 
@@ -235,17 +245,6 @@ class PointCollection:
                     d_after_post = 0.0
 
                     if j != (n_points - 1):
-                        #d_before_prev = Point.distance(path[i - 1], path[i])
-                        #d_before_post = Point.distance(path[j], path[j + 1])
-
-                        #d_after_prev = Point.distance(path[i - 1], path[j])
-                        #d_after_post = Point.distance(path[i], path[j + 1])
-
-                        #eprint("Print")
-                        #eprint(str(d_before_prev))
-                        #eprint(str(self.distance_matrixes[letter_index][path[i - 1].b][path[i].b]))
-
-                        
                         i1b = path[i - 1].b 
                         ib = path[i].b
                         d_before_prev = self.distance_matrixes[letter_index][i1b][ib]
@@ -264,9 +263,6 @@ class PointCollection:
                         d_after_post = self.distance_matrixes[letter_index][ib][j1b]
 
                     else:
-                        # d_before_prev = Point.distance(path[i - 1], path[i])
-                        # d_after_prev = Point.distance(path[i - 1], path[j])
-
                         i1b = path[i - 1].b 
                         ib = path[i].b
                         d_before_prev = self.distance_matrixes[letter_index][i1b][ib]
@@ -279,17 +275,13 @@ class PointCollection:
                     d1 = d_before_prev + d_before_post
                     d2 = d_after_prev + d_after_post
 
-
                     if (d1 - d2) > 0.0:
                         imp = 0
 
-                        part_1 = path[0:i]
-                        part_2 = path[i:(j + 1)]
-                        part_3 = path[(j + 1):]
-
-                        part_2 = part_2[::-1] # reverse subpath
-
-                        path = part_1 + part_2 + part_3
+                        # We are reversing part of a list.
+                        # e. g. a[n:m] = a[(m - 1):(n - 1)]
+                        # Thus, we subtract ones from both indexes.
+                        path[i:(j + 1)] = path[(j + 1 - 1):(i - 1):-1]
         
             imp = imp + 1
 
@@ -313,6 +305,30 @@ class PointCollection:
             self.point_collection[letter_index] = self.two_opt_single_path_optimize(path, letter_index)
 
 
+    def make_simple_stitchs(self):
+        
+        ret = []
+        for letter_index in range(NUMBER_OF_LETTERS):
+
+            path = self.point_collection[letter_index]
+            n_points = len(path)
+
+            if n_points == 0:
+                continue
+
+            letter = revert_get_letter_index(letter_index)
+            ret.append(letter)
+
+            # eprint("Number of points to append x 4: " + str(n_points*4))
+            for p in path:
+                ret.append(str(p.x+1) + " " + str(p.y))
+                ret.append(str(p.x) + " " + str(p.y+1))
+                ret.append(str(p.x+1) + " " + str(p.y+1))
+                ret.append(str(p.x) + " " + str(p.y))
+                
+        return ret
+
+
 class CrossStitch:
     
     @measure_time
@@ -329,41 +345,36 @@ class CrossStitch:
 
 
         point_collection.nearest_neighbour_all_path_minimize()
-
-
         eprint("\n Print minimized paths (nearest neighbour) \n")
         #point_collection.eprint()
         point_collection.eprint_collection_path_lengths()
 
         point_collection.two_opt_all_path_minimize()
-
         eprint("\n Print minimized paths (2 - opt) \n")
+        #point_collection.eprint()
         point_collection.eprint_collection_path_lengths()
 
-        
         ret = []
-        S = len(pattern)
-        for col in string.ascii_lowercase:
+        flag = True
 
-            first = True
-            for r in range(S):
-                for c in range(S):
-                    if pattern[r][c] == col:
-                        if first:
-                            first = False
-                            ret.append(col)
-                        ret.append(str(r+1) + " " + str(c))
-                        ret.append(str(r) + " " + str(c+1))
-                        ret.append(str(r+1) + " " + str(c+1))
-                        ret.append(str(r) + " " + str(c))
+        if flag == True:        
+            ret = point_collection.make_simple_stitchs()
+        else:
+            S = len(pattern)
+            for col in string.ascii_lowercase:
 
-        #for r in ret:
-        #    if r == "a" or r == "b":
-        #        eprint("\n" + r)
-        #    else:
-        #        eprint(r, " ")
-        #eprint()
-        #eprint(str(ret))
+                first = True
+                for r in range(S):
+                    for c in range(S):
+                        if pattern[r][c] == col:
+                            if first:
+                                first = False
+                                ret.append(col)
+                            ret.append(str(r+1) + " " + str(c))
+                            ret.append(str(r) + " " + str(c+1))
+                            ret.append(str(r+1) + " " + str(c+1))
+                            ret.append(str(r) + " " + str(c))
+
 
         return ret
 
