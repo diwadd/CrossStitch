@@ -65,6 +65,14 @@ class Point:
 
         return math.sqrt( xd + yd )
 
+    @staticmethod
+    def manhattan_distance(p1, p2):
+        xd = abs(p1.x - p2.x)
+        yd = abs(p1.y - p2.y)
+
+        return xd + yd
+
+
 
 class PointCollection:
     def __init__(self):
