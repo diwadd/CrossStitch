@@ -5,9 +5,14 @@
 #include <cstdio>
 #include <chrono>
 #include <random>
+#include <algorithm>
+#include <utility>
+
 
 #define NUMBER_OF_LETTERS 26
 #define LOCAL_INFINITY 2147483647.0 // 2^31 -1
+#define ABSOLUTE_TEMPERATURE 1.0
+
 
 using namespace std;
 
@@ -19,17 +24,24 @@ inline char revert_get_letter_index(int &letter_index){
     return letter_index + 97;
 }
 
+//-------------------------------------------------------
+//--------------------Point------------------------------
+//-------------------------------------------------------
+
 
 class Point {
     private:
         int m_x;
         int m_y;
         int m_b; // # badge
+        double m_fd; // forward distance to point
+        double m_bd; // backward distance to point
 
     public:
-        Point() { m_x = -1.0; m_y = -1.0; m_b = -1; }
-        Point(int x, int y): m_x(x), m_y(y) { m_b = -1; }        
-        Point(int x, int y, int b): m_x(x), m_y(y), m_b(b) {}
+        Point() { m_x = -1.0; m_y = -1.0; m_b = -1; m_fd = -1.0; m_bd = -1.0; }
+        Point(int x, int y): m_x(x), m_y(y) { m_b = -1; m_fd = -1.0; m_bd = -1.0; }        
+        Point(int x, int y, int b): m_x(x), m_y(y), m_b(b) { m_fd = -1.0; m_bd = -1.0; }
+        Point(int x, int y, int b, double fd, double bd): m_x(x), m_y(y), m_b(b), m_fd(fd), m_bd(bd) {}
 
         void set_x(int x) {m_x = x;}
         void set_y(int y) {m_y = y;}
@@ -45,11 +57,6 @@ class Point {
         static int manhattan_distance(Point &p1, Point &p2);
 
 };
-
-
-//-------------------------------------------------------
-//--------------------Point------------------------------
-//-------------------------------------------------------
 
 
 bool Point::operator==(const Point &other) {
@@ -123,13 +130,24 @@ class PointCollection {
 
 
         void eprint_collection();
+        void eprint_number_of_points_in_each_path();
         void eprint_distance_matrixes(int letter_index);
         void eprint_average_path_length_of_collection();
 
         double get_path_length_in_collection(vector<Point> &path);
 
         vector<Point> nearest_neighbour_single_path_optimize(vector<Point> &path, int &letter_index);
-        void nearest_neighbour_all_path_minimize();
+        void nearest_neighbour_all_path_optimize();
+
+
+        void two_opt_single_path_optimize(vector<Point> &path, int &letter_index);
+        void two_opt_all_path_optimize();
+
+
+        void point_swap(int &&p1i, int &&p2i, vector<Point> &path);
+        void get_swap_points(int &n_points, pair<double, double> &p);
+        vector<Point> markov_monte_carlo_like_single_path_optimize(int &n_iterations, vector<Point> path, int &letter_index);
+        void markov_monte_carlo_like_all_path_optimize();
 
 };
 
@@ -204,6 +222,18 @@ void PointCollection::eprint_collection(){
         for(auto p : m_point_collection[letter_index])
             cerr << p << endl;
     }
+}
+
+
+void PointCollection::eprint_number_of_points_in_each_path(){
+
+    for(int letter_index = 0; letter_index < NUMBER_OF_LETTERS; letter_index++){
+        int n_points = m_point_collection[letter_index].size();
+        if (n_points == 0)
+            continue;
+        cerr << "Number of " << (char)revert_get_letter_index(letter_index) << " letters: " << n_points << endl;
+    }
+
 }
 
 
@@ -293,7 +323,7 @@ vector<Point> PointCollection::nearest_neighbour_single_path_optimize(vector<Poi
 }
 
 
-void PointCollection::nearest_neighbour_all_path_minimize(){
+void PointCollection::nearest_neighbour_all_path_optimize(){
 
     for(int letter_index = 0; letter_index < NUMBER_OF_LETTERS; letter_index++){
         if (m_point_collection[letter_index].size() == 0)
@@ -301,8 +331,185 @@ void PointCollection::nearest_neighbour_all_path_minimize(){
 
         m_point_collection[letter_index] = nearest_neighbour_single_path_optimize(m_point_collection[letter_index], letter_index);
     }
+}
+
+
+void PointCollection::two_opt_single_path_optimize(vector<Point> &path, int &letter_index){
+
+    int imp = 0;
+    int n_points = path.size();
+
+    while (imp < 1){
+
+        for(int i = 1; i < n_points - 1; i++){
+            for(int j = i + 1; j < n_points; j++){
+
+                double d_before_prev = 0.0;
+                double d_before_post = 0.0;
+
+                double d_after_prev = 0.0;
+                double d_after_post = 0.0;
+
+
+                if (j != (n_points - 1)){
+                    int i1b = path[i - 1].get_b();
+                    int ib = path[i].get_b();
+                    d_before_prev = m_distance_matrix[letter_index][i1b][ib];
+
+                    int jb = path[j].get_b(); 
+                    int j1b = path[j + 1].get_b();
+                    d_before_post = m_distance_matrix[letter_index][jb][j1b];
+
+
+                    i1b = path[i - 1].get_b();
+                    jb = path[j].get_b();
+                    d_after_prev = m_distance_matrix[letter_index][i1b][jb];
+
+                    ib = path[i].get_b();
+                    j1b = path[j + 1].get_b();
+                    d_after_post = m_distance_matrix[letter_index][ib][j1b];
+
+                } else {
+                    int i1b = path[i - 1].get_b();
+                    int ib = path[i].get_b();
+                    d_before_prev = m_distance_matrix[letter_index][i1b][ib];
+
+                    i1b = path[i - 1].get_b();
+                    int jb = path[j].get_b();
+                    d_after_prev = m_distance_matrix[letter_index][i1b][jb];
+                }
+
+                double d1 = d_before_prev + d_before_post;
+                double d2 = d_after_prev + d_after_post;
+
+                if ((d1 - d2) > 0.0){
+                        imp = 0;
+                        reverse(path.begin() + i, path.begin() + j + 1 );
+                }
+            } // second for loop end
+        } // first for loop end
+
+        imp++;
+    } // while loop end
+
 
 }
+
+
+void PointCollection::two_opt_all_path_optimize(){
+
+    for(int letter_index = 0; letter_index < NUMBER_OF_LETTERS; letter_index++){
+        if (m_point_collection[letter_index].size() == 0)
+            continue;
+
+        two_opt_single_path_optimize(m_point_collection[letter_index], letter_index);
+    }
+}
+
+
+void PointCollection::point_swap(int &&p1i, int &&p2i, vector<Point> &path){
+
+    int x = path[p1i].get_x();
+    int y = path[p1i].get_y();
+    int b = path[p1i].get_b();
+
+    path[p1i].set_x( path[p2i].get_x() );
+    path[p1i].set_y( path[p2i].get_y() );
+    path[p1i].set_b( path[p2i].get_b() );
+
+    path[p2i].set_x( x );
+    path[p2i].set_y( y );
+    path[p2i].set_b( b );
+
+}
+
+void PointCollection::get_swap_points(int &n_points, pair<double, double> &p){
+
+    uniform_int_distribution<int> dist(0, n_points - 1);
+    int p1i = dist(m_engine);
+    int p2i = 0;
+
+    p.first = p1i;
+
+    if (p1i == 0) {
+        p2i = p1i + 1;
+        p.second = p2i;
+        return;
+    } else if (p1i == (n_points - 1)) {
+        p2i = p1i - 1;
+        p.second = p2i;
+        return;
+    } else {
+        uniform_int_distribution<int> coin(0, 1);
+        int coin_toss = coin(m_engine);
+        if (coin_toss == 0) {
+            p2i = p1i - 1;
+            p.second = p2i;
+            return;
+        } else {
+            p2i = p1i + 1;
+            p.second = p2i;
+            return;
+        }
+    }
+
+    return;
+}
+
+
+vector<Point> PointCollection::markov_monte_carlo_like_single_path_optimize(int &n_iterations, vector<Point> path, int &letter_index){
+
+    uniform_real_distribution<double> uni(0.0, 1.0);
+
+    int n_points = path.size();
+
+    pair<double, double> pr(0, 0);
+    double min_energy = get_path_length_in_collection(path);
+    double c_energy = min_energy;
+
+    double T = 1.0;
+    double lambda = 0.9;
+
+    vector<Point> new_path(path);
+
+    for(int i = 1; i < n_iterations; i++){
+
+        get_swap_points(n_points, pr);
+        point_swap(pr.first, pr.second, path);
+
+        double n_energy = get_path_length_in_collection(path);
+
+        double A = exp( (c_energy - n_energy) / T );
+        double p = uni(m_engine);
+
+        if (p < A){
+            c_energy = n_energy;
+            if (n_energy < min_energy){
+                min_energy = n_energy;           
+                new_path = path; 
+            }
+            continue;        
+        } else {
+            point_swap(pr.first, pr.second, path);
+        }
+    }
+
+    return new_path;
+}
+
+
+void PointCollection::markov_monte_carlo_like_all_path_optimize(){
+
+    int n_iterations = 100000;
+    for(int letter_index = 0; letter_index < NUMBER_OF_LETTERS; letter_index++){
+        if (m_point_collection[letter_index].size() == 0)
+            continue;
+
+        m_point_collection[letter_index] = markov_monte_carlo_like_single_path_optimize(n_iterations, m_point_collection[letter_index], letter_index);
+    }
+
+}
+
 
 
 class CrossStitch {
@@ -321,12 +528,20 @@ public:
 
 
         PointCollection point_collection(pattern);
+        point_collection.eprint_number_of_points_in_each_path();
         point_collection.eprint_average_path_length_of_collection();
 
 
-        point_collection.nearest_neighbour_all_path_minimize();
+        point_collection.nearest_neighbour_all_path_optimize();
         point_collection.eprint_average_path_length_of_collection();
 
+
+        point_collection.two_opt_all_path_optimize();
+        point_collection.eprint_average_path_length_of_collection();
+
+
+        point_collection.markov_monte_carlo_like_all_path_optimize();
+        point_collection.eprint_average_path_length_of_collection();
 
         end = std::chrono::system_clock::now();
         std::chrono::duration<double> elapsed_seconds_in_main;
