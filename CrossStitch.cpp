@@ -16,13 +16,28 @@
 
 using namespace std;
 
+typedef void (*function_pointer)(vector<int>&, vector<int>&, int, int);
+
+
+void tr_bl_br_tl(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y);
+void tr_bl_tl_br(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y);
+void tl_br_bl_tr(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y);
+void tl_br_tr_bl(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y);
+void br_tl_tr_bl(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y);
+void br_tl_bl_tr(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y);
+void bl_tr_tl_br(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y);
+void bl_tr_br_tl(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y);
+
+
 inline int get_letter_index(char &letter) {
     return letter - 97;
 }
 
+
 inline char revert_get_letter_index(int &letter_index){
     return letter_index + 97;
 }
+
 
 //-------------------------------------------------------
 //--------------------Point------------------------------
@@ -148,6 +163,11 @@ class PointCollection {
         void get_swap_points(int &n_points, pair<double, double> &p);
         vector<Point> markov_monte_carlo_like_single_path_optimize(int &n_iterations, vector<Point> path, int &letter_index);
         void markov_monte_carlo_like_all_path_optimize();
+
+        double calculate_stitch_d_distance(vector<Point> &pb_points, vector<Point> &pf_points);
+        bool check_if_stitch_order_is_valid(vector<Point> &pb_points, vector<Point> &pf_points);
+        void product_stitch(vector<string> &ret, vector<Point> path, int depth);
+        vector<string> make_stitchs(int depth);
 
 };
 
@@ -500,7 +520,7 @@ vector<Point> PointCollection::markov_monte_carlo_like_single_path_optimize(int 
 
 void PointCollection::markov_monte_carlo_like_all_path_optimize(){
 
-    int n_iterations = 100000;
+    int n_iterations = 1000;
     for(int letter_index = 0; letter_index < NUMBER_OF_LETTERS; letter_index++){
         if (m_point_collection[letter_index].size() == 0)
             continue;
@@ -511,10 +531,363 @@ void PointCollection::markov_monte_carlo_like_all_path_optimize(){
 }
 
 
+double PointCollection::calculate_stitch_d_distance(vector<Point> &pb_points, vector<Point> &pf_points){
+
+    // Calcualtes stitch_d = sum( distance(pb_points[n], pf_points[n-1]) ), from n = 1 to len(pb_points)
+
+    double stitch_d = 0; 
+    for(int i = 1; i < pb_points.size(); i++)
+        stitch_d = stitch_d + Point::euclidean_distance(pb_points[i], pf_points[i - 1]);
+
+    return stitch_d;
+}
+
+
+bool PointCollection::check_if_stitch_order_is_valid(vector<Point> &pb_points, vector<Point> &pf_points){
+
+    // Check if the begining point of stitch i is not equal
+    // to the end of stitch (i - 1).
+
+    for(int i = 1; i < pb_points.size(); i++)
+        if (pb_points[i] == pf_points[i - 1])
+            return false;
+
+    return true;
+}
+
+
+void PointCollection::product_stitch(vector<string> &ret, vector<Point> path, int depth){
+
+    vector< vector<function_pointer> > stitich_functions = {
+                                                            {tr_bl_br_tl,tr_bl_br_tl},
+                                                            {tr_bl_br_tl,tr_bl_tl_br},
+                                                            {tr_bl_br_tl,tl_br_bl_tr},
+                                                            {tr_bl_br_tl,tl_br_tr_bl},
+                                                            {tr_bl_br_tl,br_tl_tr_bl},
+                                                            {tr_bl_br_tl,br_tl_bl_tr},
+                                                            {tr_bl_br_tl,bl_tr_tl_br},
+                                                            {tr_bl_br_tl,bl_tr_br_tl},
+                                                            {tr_bl_tl_br,tr_bl_br_tl},
+                                                            {tr_bl_tl_br,tr_bl_tl_br},
+                                                            {tr_bl_tl_br,tl_br_bl_tr},
+                                                            {tr_bl_tl_br,tl_br_tr_bl},
+                                                            {tr_bl_tl_br,br_tl_tr_bl},
+                                                            {tr_bl_tl_br,br_tl_bl_tr},
+                                                            {tr_bl_tl_br,bl_tr_tl_br},
+                                                            {tr_bl_tl_br,bl_tr_br_tl},
+                                                            {tl_br_bl_tr,tr_bl_br_tl},
+                                                            {tl_br_bl_tr,tr_bl_tl_br},
+                                                            {tl_br_bl_tr,tl_br_bl_tr},
+                                                            {tl_br_bl_tr,tl_br_tr_bl},
+                                                            {tl_br_bl_tr,br_tl_tr_bl},
+                                                            {tl_br_bl_tr,br_tl_bl_tr},
+                                                            {tl_br_bl_tr,bl_tr_tl_br},
+                                                            {tl_br_bl_tr,bl_tr_br_tl},
+                                                            {tl_br_tr_bl,tr_bl_br_tl},
+                                                            {tl_br_tr_bl,tr_bl_tl_br},
+                                                            {tl_br_tr_bl,tl_br_bl_tr},
+                                                            {tl_br_tr_bl,tl_br_tr_bl},
+                                                            {tl_br_tr_bl,br_tl_tr_bl},
+                                                            {tl_br_tr_bl,br_tl_bl_tr},
+                                                            {tl_br_tr_bl,bl_tr_tl_br},
+                                                            {tl_br_tr_bl,bl_tr_br_tl},
+                                                            {br_tl_tr_bl,tr_bl_br_tl},
+                                                            {br_tl_tr_bl,tr_bl_tl_br},
+                                                            {br_tl_tr_bl,tl_br_bl_tr},
+                                                            {br_tl_tr_bl,tl_br_tr_bl},
+                                                            {br_tl_tr_bl,br_tl_tr_bl},
+                                                            {br_tl_tr_bl,br_tl_bl_tr},
+                                                            {br_tl_tr_bl,bl_tr_tl_br},
+                                                            {br_tl_tr_bl,bl_tr_br_tl},
+                                                            {br_tl_bl_tr,tr_bl_br_tl},
+                                                            {br_tl_bl_tr,tr_bl_tl_br},
+                                                            {br_tl_bl_tr,tl_br_bl_tr},
+                                                            {br_tl_bl_tr,tl_br_tr_bl},
+                                                            {br_tl_bl_tr,br_tl_tr_bl},
+                                                            {br_tl_bl_tr,br_tl_bl_tr},
+                                                            {br_tl_bl_tr,bl_tr_tl_br},
+                                                            {br_tl_bl_tr,bl_tr_br_tl},
+                                                            {bl_tr_tl_br,tr_bl_br_tl},
+                                                            {bl_tr_tl_br,tr_bl_tl_br},
+                                                            {bl_tr_tl_br,tl_br_bl_tr},
+                                                            {bl_tr_tl_br,tl_br_tr_bl},
+                                                            {bl_tr_tl_br,br_tl_tr_bl},
+                                                            {bl_tr_tl_br,br_tl_bl_tr},
+                                                            {bl_tr_tl_br,bl_tr_tl_br},
+                                                            {bl_tr_tl_br,bl_tr_br_tl},
+                                                            {bl_tr_br_tl,tr_bl_br_tl},
+                                                            {bl_tr_br_tl,tr_bl_tl_br},
+                                                            {bl_tr_br_tl,tl_br_bl_tr},
+                                                            {bl_tr_br_tl,tl_br_tr_bl},
+                                                            {bl_tr_br_tl,br_tl_tr_bl},
+                                                            {bl_tr_br_tl,br_tl_bl_tr},
+                                                            {bl_tr_br_tl,bl_tr_tl_br},
+                                                            {bl_tr_br_tl,bl_tr_br_tl}
+                                                           };
+
+
+    int fp_x = -1;
+    int fp_y = -1;
+
+    int n_points = path.size();
+
+    for(int i = 0; i < n_points; i++){
+
+        vector<Point> sub_points;
+
+        if (i + depth <= n_points){
+            for(int k = 0; k < depth; k++)
+                sub_points.push_back(path[i+k]);
+        } else {
+            for(int k = 0; k < (n_points - i); k++)
+                sub_points.push_back(path[i+k]);
+        }
+
+
+        int n_sub_points = sub_points.size();
+        double min_d = LOCAL_INFINITY;
+        vector<int> min_stitch_x(4, 0);
+        vector<int> min_stitch_y(4, 0);
+
+        for(auto product : stitich_functions){
+
+            vector<Point> pb_points(n_sub_points);
+            vector<Point> pf_points(n_sub_points);
+
+            vector<int> first_stitch_x(4, 0);
+            vector<int> first_stitch_y(4, 0);
+
+            vector<int> stitch_x(4, 0);
+            vector<int> stitch_y(4, 0);
+
+            for(int j = 0; j < n_sub_points; j++){
+                product[j](stitch_x, stitch_y, sub_points[j].get_x(), sub_points[j].get_y());
+
+                if (j == 0){
+                    first_stitch_x = stitch_x;
+                    first_stitch_y = stitch_y;
+                }
+
+                pb_points[j] = Point(stitch_x[0], stitch_y[0]);
+                pf_points[j] = Point(stitch_x[3], stitch_y[3]);
+
+            }
+
+            // Check is the end point of the previous stitch
+            // does not match the starting point of the first stitch.
+            if ((fp_x == first_stitch_x[0]) && (fp_y == first_stitch_y[0]))
+                continue;
+
+            bool is_order_valid = check_if_stitch_order_is_valid(pb_points, pf_points);
+            if (is_order_valid == false)
+                continue;
+
+            // Take in to account the previous point in the path.
+            // For i == 0 there are no previous points.
+            if (i != 0){
+                // The first pb point is not used in the calcualtion of stitch_d
+                // so we use a default constructor.
+                // deque would be more appropriate (nned to change in the future)
+                pb_points.insert(pb_points.begin(), Point());
+                pf_points.insert(pf_points.begin(), Point(fp_x, fp_y));
+            }
+
+
+            double stitch_d = calculate_stitch_d_distance(pb_points, pf_points);
+
+            if (stitch_d < min_d){
+                min_d = stitch_d;
+                min_stitch_x = first_stitch_x;
+                min_stitch_y = first_stitch_y;
+            }
+
+
+        }
+
+        ret.push_back(to_string(min_stitch_x[0]) + " " + to_string(min_stitch_y[0]));
+        ret.push_back(to_string(min_stitch_x[1]) + " " + to_string(min_stitch_y[1]));
+        ret.push_back(to_string(min_stitch_x[2]) + " " + to_string(min_stitch_y[2]));
+        ret.push_back(to_string(min_stitch_x[3]) + " " + to_string(min_stitch_y[3]));
+        
+        fp_x = min_stitch_x[3];
+        fp_y = min_stitch_y[3];
+
+    }
+
+}
+
+
+vector<string> PointCollection::make_stitchs(int depth){
+
+    vector<string> ret;
+
+    for(int letter_index = 0; letter_index < NUMBER_OF_LETTERS; letter_index++){
+        int n_points = m_point_collection[letter_index].size();
+        if (n_points == 0)
+            continue;
+
+        char letter = revert_get_letter_index(letter_index);
+        ret.push_back( string(1, letter) );
+        
+        product_stitch(ret, m_point_collection[letter_index], depth);
+    }
+
+    return ret;
+}
+
+
+
+void x_y_to_corners(vector<int> &corners, int x, int y){
+
+    int tr_x = x + 1;
+    int tr_y = y;
+
+    int bl_x = x;
+    int bl_y = y + 1;
+
+    int br_x = x + 1;
+    int br_y = y + 1;
+
+    int tl_x = x;
+    int tl_y = y;
+
+    corners[0] = tl_x;
+    corners[1] = tl_y;
+    corners[2] = tr_x;
+    corners[3] = tr_y;
+    corners[4] = bl_x;
+    corners[5] = bl_y;
+    corners[6] = br_x;
+    corners[7] = br_y;
+
+}
+
+
+void tr_bl_br_tl(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
+
+    stitch_x[0] = x + 1; // tr_x = x + 1
+    stitch_x[1] = x;     // bl_x = x
+    stitch_x[2] = x + 1; // br_x = x + 1
+    stitch_x[3] = x;     // tl_x = x
+    
+    stitch_y[0] = y;     // tr_y = y
+    stitch_y[1] = y + 1; // bl_y = y + 1
+    stitch_y[2] = y + 1; // br_y = y + 1
+    stitch_y[3] = y;     // tl_y = y
+}
+
+
+void tr_bl_tl_br(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
+
+    stitch_x[0] = x + 1; // tr_x = x + 1
+    stitch_x[1] = x;     // bl_x = x
+    stitch_x[2] = x;     // tl_x = x
+    stitch_x[3] = x + 1; // br_x = x + 1
+    
+    stitch_y[0] = y;     // tr_y = y
+    stitch_y[1] = y + 1; // bl_y = y + 1
+    stitch_y[2] = y;     // tl_y = y
+    stitch_y[3] = y + 1; // br_y = y + 1
+
+}
+
+void tl_br_bl_tr(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
+
+    stitch_x[0] = x;     // tl_x = x
+    stitch_x[1] = x + 1; // br_x = x + 1
+    stitch_x[2] = x;     // bl_x = x
+    stitch_x[3] = x + 1; // tr_x = x + 1
+    
+    stitch_y[0] = y;     // tl_y = y
+    stitch_y[1] = y + 1; // br_y = y + 1
+    stitch_y[2] = y + 1; // bl_y = y + 1
+    stitch_y[3] = y;     // tr_y = y
+
+}
+
+void tl_br_tr_bl(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
+
+    stitch_x[0] = x;     // tl_x = x
+    stitch_x[1] = x + 1; // br_x = x + 1
+    stitch_x[2] = x + 1; // tr_x = x + 1
+    stitch_x[3] = x;     // bl_x = x
+  
+    stitch_y[0] = y;     // tl_y = y
+    stitch_y[1] = y + 1; // br_y = y + 1
+    stitch_y[2] = y;     // tr_y = y
+    stitch_y[3] = y + 1; // bl_y = y + 1
+
+}
+
+
+void br_tl_tr_bl(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
+
+    stitch_x[0] = x + 1; // br_x = x + 1
+    stitch_x[1] = x;     // tl_x = x
+    stitch_x[2] = x + 1; // tr_x = x + 1
+    stitch_x[3] = x;     // bl_x = x
+  
+    stitch_y[0] = y + 1; // br_y = y + 1
+    stitch_y[1] = y;     // tl_y = y
+    stitch_y[2] = y;     // tr_y = y
+    stitch_y[3] = y + 1; // bl_y = y + 1
+
+}
+
+void br_tl_bl_tr(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
+
+    stitch_x[0] = x + 1; // br_x = x + 1
+    stitch_x[1] = x;     // tl_x = x
+    stitch_x[2] = x;     // bl_x = x
+    stitch_x[3] = x + 1; // tr_x = x + 1
+  
+    stitch_y[0] = y + 1; // br_y = y + 1
+    stitch_y[1] = y;     // tl_y = y
+    stitch_y[2] = y + 1; // bl_y = y + 1
+    stitch_y[3] = y;     // tr_y = y
+
+}
+
+
+void bl_tr_tl_br(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
+
+    stitch_x[0] = x;     // bl_x = x
+    stitch_x[1] = x + 1; // tr_x = x + 1
+    stitch_x[2] = x;     // tl_x = x
+    stitch_x[3] = x + 1; // br_x = x + 1
+  
+    stitch_y[0] = y + 1; // bl_y = y + 1
+    stitch_y[1] = y;     // tr_y = y
+    stitch_y[2] = y;     // tl_y = y
+    stitch_y[3] = y + 1; // br_y = y + 1
+
+}
+
+void bl_tr_br_tl(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
+
+    stitch_x[0] = x;     // bl_x = x
+    stitch_x[1] = x + 1; // tr_x = x + 1
+    stitch_x[2] = x + 1; // br_x = x + 1
+    stitch_x[3] = x;     // tl_x = x
+  
+    stitch_y[0] = y + 1; // bl_y = y + 1
+    stitch_y[1] = y;     // tr_y = y
+    stitch_y[2] = y + 1; // br_y = y + 1
+    stitch_y[3] = y;     // tl_y = y
+
+}
+
+
+
 
 class CrossStitch {
 public:
     vector<string> embroider(vector<string> pattern) {
+
+        function_pointer f_ptr;
+
+        f_ptr = &bl_tr_br_tl;
+
 
         Point p1;
         Point p2(-1, -2, -2);
@@ -543,6 +916,7 @@ public:
         point_collection.markov_monte_carlo_like_all_path_optimize();
         point_collection.eprint_average_path_length_of_collection();
 
+
         end = std::chrono::system_clock::now();
         std::chrono::duration<double> elapsed_seconds_in_main;
         elapsed_seconds_in_main = end-start;
@@ -550,25 +924,32 @@ public:
 
         //point_collection.eprint_collection();
         //point_collection.eprint_distance_matrixes(1);
-
         vector<string> ret;
-        int S = pattern.size();
-        // for each color, for each cell (r, c) do two stitches (r+1, c)-(r, c+1)-(r+1, c+1)-(r, c)
-        for (char col = 'a'; col <= 'z'; ++col) {
-            bool first = true;
-            for (int r = 0; r < S; ++r)
-            for (int c = 0; c < S; ++c)
-                if (pattern[r][c] == col) {
-                    if (first) {
-                        ret.push_back(string(1, col));
-                        first = false;
+        bool flag = true;
+
+        if (flag == true) {
+            ret = point_collection.make_stitchs(2);
+
+        } else {       
+            int S = pattern.size();
+            // for each color, for each cell (r, c) do two stitches (r+1, c)-(r, c+1)-(r+1, c+1)-(r, c)
+            for (char col = 'a'; col <= 'z'; ++col) {
+                bool first = true;
+                for (int r = 0; r < S; ++r)
+                for (int c = 0; c < S; ++c)
+                    if (pattern[r][c] == col) {
+                        if (first) {
+                            ret.push_back(string(1, col));
+                            first = false;
+                        }
+                        ret.push_back(to_string(r+1) + " " + to_string(c));
+                        ret.push_back(to_string(r) + " " + to_string(c+1));
+                        ret.push_back(to_string(r+1) + " " + to_string(c+1));
+                        ret.push_back(to_string(r) + " " + to_string(c));
                     }
-                    ret.push_back(to_string(r+1) + " " + to_string(c));
-                    ret.push_back(to_string(r) + " " + to_string(c+1));
-                    ret.push_back(to_string(r+1) + " " + to_string(c+1));
-                    ret.push_back(to_string(r) + " " + to_string(c));
-                }
+            }
         }
+
         return ret;
     }
 };
