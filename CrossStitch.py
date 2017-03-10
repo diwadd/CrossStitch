@@ -29,11 +29,14 @@ def measure_time(func):
     Decorator to measure the execution time of a function.
     """
     def func_wrapper(*args, **kwargs):
+
         start = time.time()
         ret = func(*args, **kwargs)
         stop = time.time()
         eprint("Time spent in function " + func.__name__ + ": " + str(stop - start))
+
         return ret
+
     return func_wrapper
 
 def get_letter_index(letter):
@@ -693,10 +696,10 @@ class CrossStitch:
         #point_collection.eprint()
         point_collection.eprint_collection_path_lengths()
 
-        #point_collection.two_opt_all_path_minimize()
-        #eprint("\n Print minimized paths (2 - opt) \n")
+        point_collection.two_opt_all_path_minimize()
+        eprint("\n Print minimized paths (2 - opt) \n")
         #point_collection.eprint()
-        #point_collection.eprint_collection_path_lengths()
+        point_collection.eprint_collection_path_lengths()
  
         ret = []
         flag = True
