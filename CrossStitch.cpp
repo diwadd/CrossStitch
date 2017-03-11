@@ -169,6 +169,8 @@ class PointCollection {
         void product_stitch(vector<string> &ret, vector<Point> path, int depth);
         vector<string> make_stitchs(int depth);
 
+        void rotate_collection();
+
 };
 
 
@@ -1185,6 +1187,46 @@ vector<string> PointCollection::make_stitchs(int depth){
 }
 
 
+void PointCollection::rotate_collection(){
+
+    for(int letter_index = 0; letter_index < NUMBER_OF_LETTERS; letter_index++){
+
+        int n_points = m_point_collection[letter_index].size();
+
+        if (n_points == 0)
+            continue;
+
+        int shift_index = 0;
+        int minimal_shift = 0;
+        double min_d = get_path_length_in_collection(m_point_collection[letter_index]);
+        double new_d = min_d;
+        for(int i = 0; i < n_points; i++){
+
+            // distance first - second
+            int b1 = m_point_collection[letter_index][0].get_b();
+            int b2 = m_point_collection[letter_index][1].get_b();
+            double dfs = m_distance_matrix[letter_index][b1][b2];
+
+            std::rotate(m_point_collection[letter_index].begin(), m_point_collection[letter_index].begin() + 1, m_point_collection[letter_index].end());
+            shift_index = shift_index + 1;
+
+            // distance last - last but one
+            b1 = m_point_collection[letter_index][n_points - 1].get_b();
+            b2 = m_point_collection[letter_index][n_points - 2].get_b();
+            double dll = m_distance_matrix[letter_index][b1][b2];
+
+            new_d = new_d - dfs + dll;
+
+            if (new_d < min_d){
+                minimal_shift = shift_index;
+                min_d = new_d;
+            }
+        }
+
+        std::rotate(m_point_collection[letter_index].begin(), m_point_collection[letter_index].begin() + minimal_shift, m_point_collection[letter_index].end());
+    }
+}
+
 
 void x_y_to_corners(vector<int> &corners, int x, int y){
 
@@ -1327,8 +1369,6 @@ void bl_tr_br_tl(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
 }
 
 
-
-
 class CrossStitch {
 public:
     vector<string> embroider(vector<string> pattern) {
@@ -1362,7 +1402,10 @@ public:
         point_collection.eprint_average_path_length_of_collection();
 
 
-        point_collection.markov_monte_carlo_like_all_path_optimize();
+        //point_collection.markov_monte_carlo_like_all_path_optimize();
+        //point_collection.eprint_average_path_length_of_collection();
+
+        point_collection.rotate_collection();
         point_collection.eprint_average_path_length_of_collection();
 
         //point_collection.eprint_collection();
@@ -1371,7 +1414,7 @@ public:
         bool flag = true;
 
         if (flag == true) {
-            ret = point_collection.make_stitchs(3);
+            ret = point_collection.make_stitchs(2);
 
         } else {       
             int S = pattern.size();
