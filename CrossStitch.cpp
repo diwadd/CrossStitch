@@ -7,17 +7,19 @@
 #include <random>
 #include <algorithm>
 #include <utility>
-
+#include <limits>
+#include <queue>
+#include <cmath>
 
 #define NUMBER_OF_LETTERS 26
-#define LOCAL_INFINITY 2147483647.0 // 2^31 -1
+#define LOCAL_INFINITY std::numeric_limits<double>::max() // 2^31 -1
 #define ABSOLUTE_TEMPERATURE 1.0
+#define LOCAL_EPSILON 1e-6
 
 
 using namespace std;
 
 typedef void (*function_pointer)(vector<int>&, vector<int>&, int, int);
-
 
 void tr_bl_br_tl(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y);
 void tr_bl_tl_br(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y);
@@ -38,6 +40,16 @@ inline char revert_get_letter_index(int &letter_index){
     return letter_index + 97;
 }
 
+
+class CPCC {
+    
+    // CPCF - Custom Pair Comparison Class
+
+    public:
+        bool operator() (const pair<double, int> &left, const pair<double, int> &right) {
+            return left.first > right.first;
+        }
+};
 
 //-------------------------------------------------------
 //--------------------Point------------------------------
@@ -149,11 +161,13 @@ class PointCollection {
         void eprint_distance_matrixes(int letter_index);
         void eprint_average_path_length_of_collection();
 
-        double get_path_length_in_collection(vector<Point> &path);
+        double get_path_length_in_collection(vector<Point> &path, int &letter_index);
 
         vector<Point> nearest_neighbour_single_path_optimize(vector<Point> &path, int &letter_index);
         void nearest_neighbour_all_path_optimize();
 
+        void minimal_spannig_tree(vector<Point> &path, int &letter_index, vector<vector<vector<double>>> &distance_matrix);
+        void hungarian(vector<vector<double>> &cost_matrix, vector<int> &left_match, vector<int> &right_match);
 
         void two_opt_single_path_optimize(vector<Point> &path, int &letter_index);
         void two_opt_all_path_optimize();
@@ -282,21 +296,23 @@ void PointCollection::eprint_average_path_length_of_collection(){
         if (n_points == 0)
             continue;
 
-        apl = apl + get_path_length_in_collection(m_point_collection[letter_index]);
+        apl = apl + get_path_length_in_collection(m_point_collection[letter_index], letter_index);
         nvp = nvp + 1;
     }
     cerr << "\nAverage path length: " << apl/nvp << endl << endl;
 }
 
 
-double PointCollection::get_path_length_in_collection(vector<Point> &path){
+double PointCollection::get_path_length_in_collection(vector<Point> &path, int &letter_index){
 
     int n_points = path.size();
 
     double pl = 0.0; // path length
     for(int i = 1; i < n_points; i++){
-        double d = Point::euclidean_distance(path[i], path[i - 1]);
-        pl = pl + d;
+
+        int b1 = path[i].get_b();
+        int b2 = path[i - 1].get_b();
+        pl = pl + m_distance_matrix[letter_index][b1][b2];
     }
 
     return pl;
@@ -354,6 +370,257 @@ void PointCollection::nearest_neighbour_all_path_optimize(){
         m_point_collection[letter_index] = nearest_neighbour_single_path_optimize(m_point_collection[letter_index], letter_index);
     }
 }
+
+
+void PointCollection::minimal_spannig_tree(vector<Point> &path, int &letter_index, vector<vector<vector<double>>> &distance_matrix){
+
+    // Construct a minimal spanning tree for a single path.
+
+    int n_points = path.size();
+    
+    vector<double> key(n_points, LOCAL_INFINITY);
+    vector<int> mst(n_points, -1);
+    vector<vector<int>> mst_adj_list(n_points);
+    vector<bool> present_in_mst(n_points, false);
+
+    priority_queue<pair<double, int>, vector<pair<double, int>>, CPCC> pq;
+
+    uniform_int_distribution<int> random_initial_key(0, n_points - 1);
+    int initial_key = random_initial_key(m_engine);
+
+    pq.push(make_pair(0.0, initial_key));
+    key[initial_key] = 0;
+
+    while( !pq.empty() ) {
+
+        int u = pq.top().second;
+        pq.pop();
+
+        cerr << "u: " << u << endl;
+
+        present_in_mst[u] = true;
+
+        for(int i = 0; i < n_points; i++){
+            
+            if (i == u)
+                continue;
+
+            double distance = distance_matrix[letter_index][u][i];
+
+            if (distance < 0.001)
+                continue;
+
+            if(present_in_mst[i] == false && key[i] > distance){
+                key[i] = distance;
+                pq.push(make_pair(distance, i));
+                mst[i] = u;
+            }
+        }
+    }
+
+    cerr << "Minimal spanning tree" << endl;
+    for (int i = 0; i < n_points; ++i){
+        if(mst[i] == -1)
+            continue;
+        mst_adj_list[i].push_back(mst[i]);
+        mst_adj_list[mst[i]].push_back(i);
+        cerr << mst[i] << " - " << i << endl;
+    }
+    cerr << "===V2===" << endl;
+
+    for(int i = 0; i < n_points; i++){
+        cerr << "i = " << i << " : ";
+        for(int j = 0; j < mst_adj_list[i].size(); j++){
+            cerr << mst_adj_list[i][j] << " - " ;
+        }
+        cerr << endl;
+    }
+
+    vector<int> odd_points;
+    for(int i = 0; i < n_points; i++){
+        if (mst_adj_list[i].size() % 2  != 0)
+            odd_points.push_back(i);
+    }
+
+    int n_odd_points = odd_points.size();
+    vector<vector<double>> cost_matrix(n_odd_points, vector<double>(n_odd_points, 0.0));
+
+    for(int i = 0; i < n_odd_points; i++) {
+        int di = odd_points[i];
+        for(int j = 0; j < n_odd_points; j++) {
+            int dj = odd_points[j];
+            cost_matrix[i][j] = distance_matrix[letter_index][di][dj];
+        }
+    }
+
+    cerr << "--- Cost matrix ---" << endl;
+    for(int i = 0; i < n_odd_points; i++){
+        for(int j = 0; j < n_odd_points; j++){
+            cerr << cost_matrix[i][j] << " ";
+        }
+        cerr << endl;
+    }
+    cerr << "-------------------" << endl;
+
+
+    // Minimum-Cost Perfect Matching
+
+    vector<int> left_match;
+    vector<int> right_match;
+
+    hungarian(cost_matrix, left_match, right_match);
+    //double ddd = MinCostMatching(cost_matrix, left_match, right_match);
+    //cerr << "ddd: " << ddd << endl;
+
+
+    // Print Matching
+    for(int i = 0; i < left_match.size(); i++){
+        int oi = odd_points[left_match[i]];
+        int oj = odd_points[right_match[i]];
+
+        cerr << oi << " <-> " << oj << endl;
+    }
+
+}
+
+
+
+void PointCollection::hungarian(vector<vector<double>> &cost_matrix, vector<int> &left_match, vector<int> &right_match){
+
+    int n_jobs = cost_matrix.size();
+
+    vector<double> u_labels(n_jobs, 0.0);
+    vector<double> v_labels(n_jobs, 0.0);
+
+    for(int i = 0; i < n_jobs; i++){
+        u_labels[i] = cost_matrix[i][0];
+        for(int j = 0; j < n_jobs; j++)
+            u_labels[i] = min(u_labels[i], cost_matrix[i][j]);
+    }
+
+    for(int i = 0; i < n_jobs; i++){
+        v_labels[i] = cost_matrix[0][i] - u_labels[0];
+        for(int j = 0; j < n_jobs; j++)
+            v_labels[i] = min(v_labels[i], cost_matrix[j][i] - u_labels[j]);
+    }
+
+    left_match = vector<int>(n_jobs, -1);
+    right_match = vector<int>(n_jobs, -1);
+
+    int matched_up_to_now = 0;
+
+    for(int i = 0; i < n_jobs; i++){
+        for(int j = 0; j < n_jobs; j++){
+
+            if (right_match[j] != -1)
+                continue;
+
+            if ( fabs(cost_matrix[i][j] - u_labels[i] - v_labels[j]) <  LOCAL_EPSILON){
+                
+                left_match[i] = j;
+                right_match[j] = i;
+                matched_up_to_now++;
+                break;
+            }
+        }
+    }
+
+    vector<double> dijkstra(n_jobs, 0.0);
+    vector<int> dad(n_jobs, -1);
+    vector<bool> seen(n_jobs, false);
+
+    while(matched_up_to_now < n_jobs) {
+
+        int s_index = 0;
+        while(left_match[s_index] != -1)
+            s_index++;
+
+        for(int k = 0; k < n_jobs; k++)
+            dijkstra[k] = cost_matrix[s_index][k] - u_labels[s_index] - v_labels[k];
+
+        int j_index = 0;
+        while(true) {
+
+            j_index = -1;
+            for(int k = 0; k < n_jobs; k++){
+                if (seen[k])
+                    continue;
+
+                if (j_index == -1 || dijkstra[k] < dijkstra[j_index])
+                    j_index = k;
+            }
+
+            seen[j_index] = 1;
+
+            if (right_match[j_index] == -1)
+                break;
+
+            const int i_index = right_match[j_index];
+            for(int k = 0; k < n_jobs; k++){
+                if (seen[k])
+                    continue;
+                
+                const double new_djikstra = dijkstra[j_index] - cost_matrix[i_index][k] - u_labels[i_index] - v_labels[k];
+                if (dijkstra[k] > new_djikstra){
+                    dijkstra[k] = new_djikstra;
+                    dad[k] = j_index;
+                }
+
+            }
+        } // end of inner while loop
+        
+        for(int k = 0; k < n_jobs; k++){
+            if (k == j_index || !seen[k])
+                continue;
+
+            const int i = right_match[k];
+            u_labels[i] = u_labels[k] - dijkstra[k] - dijkstra[j_index];
+            v_labels[k] = v_labels[k] + dijkstra[k] - dijkstra[j_index];
+        }
+
+        u_labels[s_index] = u_labels[s_index] + dijkstra[j_index];
+
+        while(dad[j_index] >= 0) {
+
+            const int d = dad[j_index];
+            right_match[j_index] = right_match[d];
+            left_match[right_match[j_index]] = j_index;
+
+            j_index = d;
+            //cerr << "While dad" << endl;
+        } // end of inner while loop
+
+        right_match[j_index] = s_index;
+        left_match[s_index] = j_index;
+        matched_up_to_now++;
+
+    }
+    
+    cerr << "--- Cost matrix ---" << endl;
+    for(int i = 0; i < n_jobs; i++){
+        for(int j = 0; j < n_jobs; j++){
+            cerr << cost_matrix[i][j] << " ";
+        }
+        cerr << endl;
+    }
+
+    cerr << "left_match: ";
+    for(int i = 0; i < n_jobs; i++){
+        cerr << left_match[i] << " ";
+    }
+    cerr << endl;
+
+    double value = 0.0;
+    for(int i = 0; i < n_jobs; i++){
+        cerr << "value: " << value << endl;
+        value = value + cost_matrix[right_match[i]][left_match[i]];
+    }
+
+    cerr << "Min cost perfect matching: " << value << endl;
+
+}
+
+
 
 
 void PointCollection::two_opt_single_path_optimize(vector<Point> &path, int &letter_index){
@@ -486,7 +753,7 @@ vector<Point> PointCollection::markov_monte_carlo_like_single_path_optimize(int 
     int n_points = path.size();
 
     pair<double, double> pr(0, 0);
-    double min_energy = get_path_length_in_collection(path);
+    double min_energy = get_path_length_in_collection(path, letter_index);
     double c_energy = min_energy;
 
     double T = 1.0;
@@ -499,7 +766,7 @@ vector<Point> PointCollection::markov_monte_carlo_like_single_path_optimize(int 
         get_swap_points(n_points, pr);
         point_swap(pr.first, pr.second, path);
 
-        double n_energy = get_path_length_in_collection(path);
+        double n_energy = get_path_length_in_collection(path, letter_index);
 
         double A = exp( (c_energy - n_energy) / T );
         double p = uni(m_engine);
@@ -1121,10 +1388,9 @@ void PointCollection::product_stitch(vector<string> &ret, vector<Point> path, in
 
                 pb_points[j] = Point(stitch_x[0], stitch_y[0]);
                 pf_points[j] = Point(stitch_x[3], stitch_y[3]);
-
             }
 
-            // Check is the end point of the previous stitch
+            // Check if the end point of the previous stitch
             // does not match the starting point of the first stitch.
             if ((fp_x == first_stitch_x[0]) && (fp_y == first_stitch_y[0]))
                 continue;
@@ -1198,7 +1464,7 @@ void PointCollection::rotate_collection(){
 
         int shift_index = 0;
         int minimal_shift = 0;
-        double min_d = get_path_length_in_collection(m_point_collection[letter_index]);
+        double min_d = get_path_length_in_collection(m_point_collection[letter_index], letter_index);
         double new_d = min_d;
         for(int i = 0; i < n_points; i++){
 
@@ -1407,6 +1673,49 @@ public:
 
         point_collection.rotate_collection();
         point_collection.eprint_average_path_length_of_collection();
+
+
+        double s = sqrt(2.0);
+        vector<vector<vector<double>>> distance_matrix = {{
+                                                   {LOCAL_INFINITY,   2, s, 2*s, 2},
+                                                   {2,   LOCAL_INFINITY, s,   2, 2*s},
+                                                   {s,   s, LOCAL_INFINITY,   s, s},
+                                                   {2*s, 2, s,   LOCAL_INFINITY, 2},
+                                                   {2, 2*s, s,   2, LOCAL_INFINITY},
+                                                  }};
+
+   
+    /*
+        vector<vector<vector<double>>> distance_matrix = {{
+                                                   {0, 2, 0, 6, 0},
+                                                   {2, 0, 3, 8, 5},
+                                                   {0, 3, 0, 0, 7},
+                                                   {6, 8, 0, 0, 9},
+                                                   {0, 5, 7, 9, 0},
+                                                  }};
+
+   */
+
+        /*
+        vector<vector<vector<double>>> distance_matrix = {{
+                                                   {0,  4, 0, 0, 0, 0, 0, 7, 0},//0
+                                                   {4,  0, 8, 0, 0, 0, 0,11, 0},//1
+                                                   {0,  8, 0, 7, 0, 4, 0, 0, 2},//2
+                                                   {0,  0, 7, 0, 9,14, 0, 0, 0},//3
+                                                   {0,  0, 0, 9, 0,10, 0, 0, 0},//4
+                                                   {0,  0, 4,14,10, 0, 2, 0, 0},//5
+                                                   {0,  0, 0, 0, 0, 2, 0, 1, 6},//6
+                                                   {7, 11, 0, 0, 0, 0, 1, 0, 7},//7
+                                                   {0,  0, 2, 0, 0, 0, 6, 7, 0},//8
+                                                   }};
+
+        */
+
+        int li = 0;
+    
+        vector<Point> path = {Point(), Point(), Point(), Point(), Point()};
+    
+        point_collection.minimal_spannig_tree(path, li, distance_matrix);
 
         //point_collection.eprint_collection();
         //point_collection.eprint_distance_matrixes(1);
