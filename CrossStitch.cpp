@@ -151,6 +151,8 @@ class PointCollection {
 
         vector<vector<double>> get_distance_matrix(vector<Point> &path);
 
+        vector<int> m_mst_walk;
+
     public:
         PointCollection() {}
         PointCollection(vector<string> &pattern);
@@ -168,6 +170,9 @@ class PointCollection {
         void nearest_neighbour_all_path_optimize();
         void next_to_nearest_neighbour_all_path_optimize();
 
+        void minimal_spannig_tree(vector<Point> &path, int &letter_index);
+        int walk_graph(int root, int letter_index, vector<vector<int>> &mst_adj_list, vector<bool> &visited_list);
+        void mst_all_path_optimize();
 
         void two_opt_single_path_optimize(vector<Point> &path, int &letter_index);
         void two_opt_all_path_optimize();
@@ -220,6 +225,8 @@ PointCollection::PointCollection(vector<string> &pattern){
 
     m_point_collection = vector<vector<Point>>(NUMBER_OF_LETTERS);
     m_distance_matrix = vector< vector<vector<double>>>(NUMBER_OF_LETTERS);
+
+    m_mst_walk = vector<int>();
 
     int S = pattern.size();
     
@@ -436,6 +443,7 @@ void PointCollection::nearest_neighbour_all_path_optimize(){
 }
 
 
+
 void PointCollection::next_to_nearest_neighbour_all_path_optimize(){
 
     for(int letter_index = 0; letter_index < NUMBER_OF_LETTERS; letter_index++){
@@ -446,6 +454,118 @@ void PointCollection::next_to_nearest_neighbour_all_path_optimize(){
     }
 }
 
+
+
+
+void PointCollection::minimal_spannig_tree(vector<Point> &path, int &letter_index){
+
+    // Construct a minimal spanning tree for a single path.
+
+    int n_points = path.size();
+    
+    vector<double> key(n_points, LOCAL_INFINITY);
+    vector<int> mst(n_points, -1);
+    vector<vector<int>> mst_adj_list(n_points);
+    vector<bool> present_in_mst(n_points, false);
+
+    priority_queue<pair<double, int>, vector<pair<double, int>>, CPCC> pq;
+
+    uniform_int_distribution<int> random_initial_key(0, n_points - 1);
+    int initial_key = random_initial_key(m_engine);
+
+    pq.push(make_pair(0.0, initial_key));
+    key[initial_key] = 0;
+
+    while( !pq.empty() ) {
+
+        int u = pq.top().second;
+        pq.pop();
+
+        present_in_mst[u] = true;
+
+        for(int i = 0; i < n_points; i++){
+            
+            if (i == u)
+                continue;
+
+            double distance = m_distance_matrix[letter_index][u][i];
+
+            if (distance < 0.001)
+                continue;
+
+            if(present_in_mst[i] == false && key[i] > distance){
+                key[i] = distance;
+                pq.push(make_pair(distance, i));
+                mst[i] = u;
+            }
+        }
+    }
+
+    for (int i = 0; i < n_points; ++i){
+        if(mst[i] == -1)
+            continue;
+        mst_adj_list[i].push_back(mst[i]);
+        mst_adj_list[mst[i]].push_back(i);
+    }
+
+    vector<bool> visited_list(n_points, false);
+    walk_graph(initial_key, letter_index, mst_adj_list, visited_list);
+    
+    vector<Point> minimized_path(n_points);
+
+
+    for(int i = 0; i < n_points; i++){
+        int index = m_mst_walk[i];
+        minimized_path[i] = path[index];
+    }
+
+    path = minimized_path;
+    m_mst_walk.clear();
+
+}
+
+
+
+int PointCollection::walk_graph(int root, int letter_index, vector<vector<int>> &mst_adj_list, vector<bool> &visited_list){
+
+    int n = mst_adj_list[root].size();
+    if (n == 0 || visited_list[root] == true){
+        cerr << "End node" << endl;
+        return -1;
+    }
+    
+    visited_list[root] = true;
+
+    vector<pair<double, int>> vec(n);
+
+    for(int i = 0; i < n; i++)
+        vec[i] = pair<double, int>(m_distance_matrix[letter_index][root][ mst_adj_list[root][i] ], mst_adj_list[root][i]);
+
+    sort(vec.begin(), vec.end(), [](pair<double, int> &left, pair<double, int> &right) { return left.first < right.first; });
+
+    for(int i = 0; i < n; i++){
+        if(visited_list[vec[i].second] == true)
+            continue;
+
+        walk_graph(vec[i].second, letter_index, mst_adj_list, visited_list);
+        
+    }
+
+    m_mst_walk.push_back(root);
+    return -1;
+}
+
+
+
+void PointCollection::mst_all_path_optimize(){
+
+    for(int letter_index = 0; letter_index < NUMBER_OF_LETTERS; letter_index++){
+        if (m_point_collection[letter_index].size() == 0)
+            continue;
+
+        minimal_spannig_tree(m_point_collection[letter_index], letter_index);
+    }
+}
 
 
 
@@ -1026,12 +1146,14 @@ public:
         // point_collection.eprint_number_of_points_in_each_path();
         point_collection.eprint_average_path_length_of_collection();
 
-        point_collection.nearest_neighbour_all_path_optimize();
-        point_collection.eprint_average_path_length_of_collection();
+        //point_collection.nearest_neighbour_all_path_optimize();
+        //point_collection.eprint_average_path_length_of_collection();
 
         //point_collection.next_to_nearest_neighbour_all_path_optimize();
         //point_collection.eprint_average_path_length_of_collection();
 
+        point_collection.mst_all_path_optimize();
+        point_collection.eprint_average_path_length_of_collection();
 
         int n_iterations;
         if (pattern_size <= 10)
@@ -1040,7 +1162,7 @@ public:
             n_iterations = 200000;
         else
             n_iterations = 10000;
-
+        
         point_collection.markov_monte_carlo_like_all_path_optimize(n_iterations);
         point_collection.eprint_average_path_length_of_collection();
 
@@ -1052,6 +1174,14 @@ public:
 
         //point_collection.eprint_collection();
         //point_collection.eprint_distance_matrixes(1);
+
+
+
+
+
+
+
+
         vector<string> ret;
         bool flag = true;
 
