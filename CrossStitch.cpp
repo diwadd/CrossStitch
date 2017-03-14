@@ -159,15 +159,15 @@ class PointCollection {
         void eprint_collection();
         void eprint_number_of_points_in_each_path();
         void eprint_distance_matrixes(int letter_index);
-        void eprint_average_path_length_of_collection();
+        double eprint_average_path_length_of_collection();
 
         double get_path_length_in_collection(vector<Point> &path, int &letter_index);
 
         vector<Point> nearest_neighbour_single_path_optimize(vector<Point> &path, int &letter_index);
+        vector<Point> next_to_nearest_neighbour_single_path_optimize(vector<Point> &path, int &letter_index);
         void nearest_neighbour_all_path_optimize();
+        void next_to_nearest_neighbour_all_path_optimize();
 
-        void minimal_spannig_tree(vector<Point> &path, int &letter_index, vector<vector<vector<double>>> &distance_matrix);
-        void hungarian(vector<vector<double>> &cost_matrix, vector<int> &left_match, vector<int> &right_match);
 
         void two_opt_single_path_optimize(vector<Point> &path, int &letter_index);
         void two_opt_all_path_optimize();
@@ -176,7 +176,7 @@ class PointCollection {
         void point_swap(int &&p1i, int &&p2i, vector<Point> &path);
         void get_swap_points(int &n_points, pair<double, double> &p);
         vector<Point> markov_monte_carlo_like_single_path_optimize(int &n_iterations, vector<Point> path, int &letter_index);
-        void markov_monte_carlo_like_all_path_optimize();
+        void markov_monte_carlo_like_all_path_optimize(int n_iterations);
 
         double calculate_stitch_d_distance(vector<Point> &pb_points, vector<Point> &pf_points);
         bool check_if_stitch_order_is_valid(vector<Point> &pb_points, vector<Point> &pf_points);
@@ -194,7 +194,7 @@ vector<vector<double>> PointCollection::get_distance_matrix(vector<Point> &path)
     vector<vector<double>> M = vector<vector<double>>(n_points);
 
     for(int i = 0; i < n_points; i++)
-        M[i].resize(n_points, 0.0);
+        M[i].resize(n_points, LOCAL_INFINITY);
 
     for(int i = 0; i < n_points; i++){
         for(int j = 0; j < n_points; j++){
@@ -286,7 +286,7 @@ void PointCollection::eprint_distance_matrixes(int letter_index){
 }
 
 
-void PointCollection::eprint_average_path_length_of_collection(){
+double PointCollection::eprint_average_path_length_of_collection(){
 
     double apl = 0.0; // Average Path Length
     double nvp = 0; // number of valid paths
@@ -361,6 +361,70 @@ vector<Point> PointCollection::nearest_neighbour_single_path_optimize(vector<Poi
 }
 
 
+
+vector<Point> PointCollection::next_to_nearest_neighbour_single_path_optimize(vector<Point> &path, int &letter_index){
+
+    int n_points = path.size();
+
+    vector<Point> minimized_path(n_points);
+    vector<bool> visited_points(n_points, false);
+
+    uniform_int_distribution<int> dist(0, n_points - 1);
+    int cpi = dist(m_engine); // Current Point Index
+    int nocp = 0; // Number Of Checked Points
+ 
+    Point *cp = &path[cpi];
+    minimized_path[nocp] = (*cp);
+    visited_points[cpi] = true;
+
+    while (nocp != n_points - 1) {
+
+        double min_d = LOCAL_INFINITY;
+        int cpb = cp->get_b();
+        for(int i = 0; i < n_points; i++) {
+            if (visited_points[i] == true)
+                continue;
+
+            int p2b = path[i].get_b();
+            if (cpb == p2b)
+                continue;
+
+            double sub_d = m_distance_matrix[letter_index][cpb][p2b];
+
+            if (nocp == n_points - 2){
+                cpi = i;
+                break;
+            }
+
+            for(int j = 0; j < n_points; j++) {                
+                if (visited_points[j] == true)
+                    continue;
+
+                int p3b = path[j].get_b();
+                if (p2b == p3b)
+                    continue;
+
+                double sub_sub_d = m_distance_matrix[letter_index][p2b][p3b];
+                
+                if ( (sub_d + sub_sub_d) < min_d){
+                    min_d = (sub_d + sub_sub_d);
+                    cpi = i;
+                }
+            }
+
+        }
+        cp = &path[cpi];
+        visited_points[cpi] = true;
+        nocp = nocp + 1;
+        minimized_path[nocp] = (*cp);
+    }
+
+    return minimized_path;
+}
+
+
+
+
 void PointCollection::nearest_neighbour_all_path_optimize(){
 
     for(int letter_index = 0; letter_index < NUMBER_OF_LETTERS; letter_index++){
@@ -372,252 +436,14 @@ void PointCollection::nearest_neighbour_all_path_optimize(){
 }
 
 
-void PointCollection::minimal_spannig_tree(vector<Point> &path, int &letter_index, vector<vector<vector<double>>> &distance_matrix){
+void PointCollection::next_to_nearest_neighbour_all_path_optimize(){
 
-    // Construct a minimal spanning tree for a single path.
-
-    int n_points = path.size();
-    
-    vector<double> key(n_points, LOCAL_INFINITY);
-    vector<int> mst(n_points, -1);
-    vector<vector<int>> mst_adj_list(n_points);
-    vector<bool> present_in_mst(n_points, false);
-
-    priority_queue<pair<double, int>, vector<pair<double, int>>, CPCC> pq;
-
-    uniform_int_distribution<int> random_initial_key(0, n_points - 1);
-    int initial_key = random_initial_key(m_engine);
-
-    pq.push(make_pair(0.0, initial_key));
-    key[initial_key] = 0;
-
-    while( !pq.empty() ) {
-
-        int u = pq.top().second;
-        pq.pop();
-
-        cerr << "u: " << u << endl;
-
-        present_in_mst[u] = true;
-
-        for(int i = 0; i < n_points; i++){
-            
-            if (i == u)
-                continue;
-
-            double distance = distance_matrix[letter_index][u][i];
-
-            if (distance < 0.001)
-                continue;
-
-            if(present_in_mst[i] == false && key[i] > distance){
-                key[i] = distance;
-                pq.push(make_pair(distance, i));
-                mst[i] = u;
-            }
-        }
-    }
-
-    cerr << "Minimal spanning tree" << endl;
-    for (int i = 0; i < n_points; ++i){
-        if(mst[i] == -1)
+    for(int letter_index = 0; letter_index < NUMBER_OF_LETTERS; letter_index++){
+        if (m_point_collection[letter_index].size() == 0)
             continue;
-        mst_adj_list[i].push_back(mst[i]);
-        mst_adj_list[mst[i]].push_back(i);
-        cerr << mst[i] << " - " << i << endl;
+
+        m_point_collection[letter_index] = next_to_nearest_neighbour_single_path_optimize(m_point_collection[letter_index], letter_index);
     }
-    cerr << "===V2===" << endl;
-
-    for(int i = 0; i < n_points; i++){
-        cerr << "i = " << i << " : ";
-        for(int j = 0; j < mst_adj_list[i].size(); j++){
-            cerr << mst_adj_list[i][j] << " - " ;
-        }
-        cerr << endl;
-    }
-
-    vector<int> odd_points;
-    for(int i = 0; i < n_points; i++){
-        if (mst_adj_list[i].size() % 2  != 0)
-            odd_points.push_back(i);
-    }
-
-    int n_odd_points = odd_points.size();
-    vector<vector<double>> cost_matrix(n_odd_points, vector<double>(n_odd_points, 0.0));
-
-    for(int i = 0; i < n_odd_points; i++) {
-        int di = odd_points[i];
-        for(int j = 0; j < n_odd_points; j++) {
-            int dj = odd_points[j];
-            cost_matrix[i][j] = distance_matrix[letter_index][di][dj];
-        }
-    }
-
-    cerr << "--- Cost matrix ---" << endl;
-    for(int i = 0; i < n_odd_points; i++){
-        for(int j = 0; j < n_odd_points; j++){
-            cerr << cost_matrix[i][j] << " ";
-        }
-        cerr << endl;
-    }
-    cerr << "-------------------" << endl;
-
-
-    // Minimum-Cost Perfect Matching
-
-    vector<int> left_match;
-    vector<int> right_match;
-
-    hungarian(cost_matrix, left_match, right_match);
-    //double ddd = MinCostMatching(cost_matrix, left_match, right_match);
-    //cerr << "ddd: " << ddd << endl;
-
-
-    // Print Matching
-    for(int i = 0; i < left_match.size(); i++){
-        int oi = odd_points[left_match[i]];
-        int oj = odd_points[right_match[i]];
-
-        cerr << oi << " <-> " << oj << endl;
-    }
-
-}
-
-
-
-void PointCollection::hungarian(vector<vector<double>> &cost_matrix, vector<int> &left_match, vector<int> &right_match){
-
-    int n_jobs = cost_matrix.size();
-
-    vector<double> u_labels(n_jobs, 0.0);
-    vector<double> v_labels(n_jobs, 0.0);
-
-    for(int i = 0; i < n_jobs; i++){
-        u_labels[i] = cost_matrix[i][0];
-        for(int j = 0; j < n_jobs; j++)
-            u_labels[i] = min(u_labels[i], cost_matrix[i][j]);
-    }
-
-    for(int i = 0; i < n_jobs; i++){
-        v_labels[i] = cost_matrix[0][i] - u_labels[0];
-        for(int j = 0; j < n_jobs; j++)
-            v_labels[i] = min(v_labels[i], cost_matrix[j][i] - u_labels[j]);
-    }
-
-    left_match = vector<int>(n_jobs, -1);
-    right_match = vector<int>(n_jobs, -1);
-
-    int matched_up_to_now = 0;
-
-    for(int i = 0; i < n_jobs; i++){
-        for(int j = 0; j < n_jobs; j++){
-
-            if (right_match[j] != -1)
-                continue;
-
-            if ( fabs(cost_matrix[i][j] - u_labels[i] - v_labels[j]) <  LOCAL_EPSILON){
-                
-                left_match[i] = j;
-                right_match[j] = i;
-                matched_up_to_now++;
-                break;
-            }
-        }
-    }
-
-    vector<double> dijkstra(n_jobs, 0.0);
-    vector<int> dad(n_jobs, -1);
-    vector<bool> seen(n_jobs, false);
-
-    while(matched_up_to_now < n_jobs) {
-
-        int s_index = 0;
-        while(left_match[s_index] != -1)
-            s_index++;
-
-        for(int k = 0; k < n_jobs; k++)
-            dijkstra[k] = cost_matrix[s_index][k] - u_labels[s_index] - v_labels[k];
-
-        int j_index = 0;
-        while(true) {
-
-            j_index = -1;
-            for(int k = 0; k < n_jobs; k++){
-                if (seen[k])
-                    continue;
-
-                if (j_index == -1 || dijkstra[k] < dijkstra[j_index])
-                    j_index = k;
-            }
-
-            seen[j_index] = 1;
-
-            if (right_match[j_index] == -1)
-                break;
-
-            const int i_index = right_match[j_index];
-            for(int k = 0; k < n_jobs; k++){
-                if (seen[k])
-                    continue;
-                
-                const double new_djikstra = dijkstra[j_index] - cost_matrix[i_index][k] - u_labels[i_index] - v_labels[k];
-                if (dijkstra[k] > new_djikstra){
-                    dijkstra[k] = new_djikstra;
-                    dad[k] = j_index;
-                }
-
-            }
-        } // end of inner while loop
-        
-        for(int k = 0; k < n_jobs; k++){
-            if (k == j_index || !seen[k])
-                continue;
-
-            const int i = right_match[k];
-            u_labels[i] = u_labels[k] - dijkstra[k] - dijkstra[j_index];
-            v_labels[k] = v_labels[k] + dijkstra[k] - dijkstra[j_index];
-        }
-
-        u_labels[s_index] = u_labels[s_index] + dijkstra[j_index];
-
-        while(dad[j_index] >= 0) {
-
-            const int d = dad[j_index];
-            right_match[j_index] = right_match[d];
-            left_match[right_match[j_index]] = j_index;
-
-            j_index = d;
-            //cerr << "While dad" << endl;
-        } // end of inner while loop
-
-        right_match[j_index] = s_index;
-        left_match[s_index] = j_index;
-        matched_up_to_now++;
-
-    }
-    
-    cerr << "--- Cost matrix ---" << endl;
-    for(int i = 0; i < n_jobs; i++){
-        for(int j = 0; j < n_jobs; j++){
-            cerr << cost_matrix[i][j] << " ";
-        }
-        cerr << endl;
-    }
-
-    cerr << "left_match: ";
-    for(int i = 0; i < n_jobs; i++){
-        cerr << left_match[i] << " ";
-    }
-    cerr << endl;
-
-    double value = 0.0;
-    for(int i = 0; i < n_jobs; i++){
-        cerr << "value: " << value << endl;
-        value = value + cost_matrix[right_match[i]][left_match[i]];
-    }
-
-    cerr << "Min cost perfect matching: " << value << endl;
-
 }
 
 
@@ -787,9 +613,8 @@ vector<Point> PointCollection::markov_monte_carlo_like_single_path_optimize(int 
 }
 
 
-void PointCollection::markov_monte_carlo_like_all_path_optimize(){
+void PointCollection::markov_monte_carlo_like_all_path_optimize(int n_iterations){
 
-    int n_iterations = 1000;
     for(int letter_index = 0; letter_index < NUMBER_OF_LETTERS; letter_index++){
         if (m_point_collection[letter_index].size() == 0)
             continue;
@@ -828,519 +653,70 @@ bool PointCollection::check_if_stitch_order_is_valid(vector<Point> &pb_points, v
 void PointCollection::product_stitch(vector<string> &ret, vector<Point> path, int depth){
 
     vector< vector<function_pointer> > stitich_functions = {
-                                                            {tr_bl_br_tl,tr_bl_br_tl,tr_bl_br_tl},
-                                                            {tr_bl_br_tl,tr_bl_br_tl,tr_bl_tl_br},
-                                                            {tr_bl_br_tl,tr_bl_br_tl,tl_br_bl_tr},
-                                                            {tr_bl_br_tl,tr_bl_br_tl,tl_br_tr_bl},
-                                                            {tr_bl_br_tl,tr_bl_br_tl,br_tl_tr_bl},
-                                                            {tr_bl_br_tl,tr_bl_br_tl,br_tl_bl_tr},
-                                                            {tr_bl_br_tl,tr_bl_br_tl,bl_tr_tl_br},
-                                                            {tr_bl_br_tl,tr_bl_br_tl,bl_tr_br_tl},
-                                                            {tr_bl_br_tl,tr_bl_tl_br,tr_bl_br_tl},
-                                                            {tr_bl_br_tl,tr_bl_tl_br,tr_bl_tl_br},
-                                                            {tr_bl_br_tl,tr_bl_tl_br,tl_br_bl_tr},
-                                                            {tr_bl_br_tl,tr_bl_tl_br,tl_br_tr_bl},
-                                                            {tr_bl_br_tl,tr_bl_tl_br,br_tl_tr_bl},
-                                                            {tr_bl_br_tl,tr_bl_tl_br,br_tl_bl_tr},
-                                                            {tr_bl_br_tl,tr_bl_tl_br,bl_tr_tl_br},
-                                                            {tr_bl_br_tl,tr_bl_tl_br,bl_tr_br_tl},
-                                                            {tr_bl_br_tl,tl_br_bl_tr,tr_bl_br_tl},
-                                                            {tr_bl_br_tl,tl_br_bl_tr,tr_bl_tl_br},
-                                                            {tr_bl_br_tl,tl_br_bl_tr,tl_br_bl_tr},
-                                                            {tr_bl_br_tl,tl_br_bl_tr,tl_br_tr_bl},
-                                                            {tr_bl_br_tl,tl_br_bl_tr,br_tl_tr_bl},
-                                                            {tr_bl_br_tl,tl_br_bl_tr,br_tl_bl_tr},
-                                                            {tr_bl_br_tl,tl_br_bl_tr,bl_tr_tl_br},
-                                                            {tr_bl_br_tl,tl_br_bl_tr,bl_tr_br_tl},
-                                                            {tr_bl_br_tl,tl_br_tr_bl,tr_bl_br_tl},
-                                                            {tr_bl_br_tl,tl_br_tr_bl,tr_bl_tl_br},
-                                                            {tr_bl_br_tl,tl_br_tr_bl,tl_br_bl_tr},
-                                                            {tr_bl_br_tl,tl_br_tr_bl,tl_br_tr_bl},
-                                                            {tr_bl_br_tl,tl_br_tr_bl,br_tl_tr_bl},
-                                                            {tr_bl_br_tl,tl_br_tr_bl,br_tl_bl_tr},
-                                                            {tr_bl_br_tl,tl_br_tr_bl,bl_tr_tl_br},
-                                                            {tr_bl_br_tl,tl_br_tr_bl,bl_tr_br_tl},
-                                                            {tr_bl_br_tl,br_tl_tr_bl,tr_bl_br_tl},
-                                                            {tr_bl_br_tl,br_tl_tr_bl,tr_bl_tl_br},
-                                                            {tr_bl_br_tl,br_tl_tr_bl,tl_br_bl_tr},
-                                                            {tr_bl_br_tl,br_tl_tr_bl,tl_br_tr_bl},
-                                                            {tr_bl_br_tl,br_tl_tr_bl,br_tl_tr_bl},
-                                                            {tr_bl_br_tl,br_tl_tr_bl,br_tl_bl_tr},
-                                                            {tr_bl_br_tl,br_tl_tr_bl,bl_tr_tl_br},
-                                                            {tr_bl_br_tl,br_tl_tr_bl,bl_tr_br_tl},
-                                                            {tr_bl_br_tl,br_tl_bl_tr,tr_bl_br_tl},
-                                                            {tr_bl_br_tl,br_tl_bl_tr,tr_bl_tl_br},
-                                                            {tr_bl_br_tl,br_tl_bl_tr,tl_br_bl_tr},
-                                                            {tr_bl_br_tl,br_tl_bl_tr,tl_br_tr_bl},
-                                                            {tr_bl_br_tl,br_tl_bl_tr,br_tl_tr_bl},
-                                                            {tr_bl_br_tl,br_tl_bl_tr,br_tl_bl_tr},
-                                                            {tr_bl_br_tl,br_tl_bl_tr,bl_tr_tl_br},
-                                                            {tr_bl_br_tl,br_tl_bl_tr,bl_tr_br_tl},
-                                                            {tr_bl_br_tl,bl_tr_tl_br,tr_bl_br_tl},
-                                                            {tr_bl_br_tl,bl_tr_tl_br,tr_bl_tl_br},
-                                                            {tr_bl_br_tl,bl_tr_tl_br,tl_br_bl_tr},
-                                                            {tr_bl_br_tl,bl_tr_tl_br,tl_br_tr_bl},
-                                                            {tr_bl_br_tl,bl_tr_tl_br,br_tl_tr_bl},
-                                                            {tr_bl_br_tl,bl_tr_tl_br,br_tl_bl_tr},
-                                                            {tr_bl_br_tl,bl_tr_tl_br,bl_tr_tl_br},
-                                                            {tr_bl_br_tl,bl_tr_tl_br,bl_tr_br_tl},
-                                                            {tr_bl_br_tl,bl_tr_br_tl,tr_bl_br_tl},
-                                                            {tr_bl_br_tl,bl_tr_br_tl,tr_bl_tl_br},
-                                                            {tr_bl_br_tl,bl_tr_br_tl,tl_br_bl_tr},
-                                                            {tr_bl_br_tl,bl_tr_br_tl,tl_br_tr_bl},
-                                                            {tr_bl_br_tl,bl_tr_br_tl,br_tl_tr_bl},
-                                                            {tr_bl_br_tl,bl_tr_br_tl,br_tl_bl_tr},
-                                                            {tr_bl_br_tl,bl_tr_br_tl,bl_tr_tl_br},
-                                                            {tr_bl_br_tl,bl_tr_br_tl,bl_tr_br_tl},
-                                                            {tr_bl_tl_br,tr_bl_br_tl,tr_bl_br_tl},
-                                                            {tr_bl_tl_br,tr_bl_br_tl,tr_bl_tl_br},
-                                                            {tr_bl_tl_br,tr_bl_br_tl,tl_br_bl_tr},
-                                                            {tr_bl_tl_br,tr_bl_br_tl,tl_br_tr_bl},
-                                                            {tr_bl_tl_br,tr_bl_br_tl,br_tl_tr_bl},
-                                                            {tr_bl_tl_br,tr_bl_br_tl,br_tl_bl_tr},
-                                                            {tr_bl_tl_br,tr_bl_br_tl,bl_tr_tl_br},
-                                                            {tr_bl_tl_br,tr_bl_br_tl,bl_tr_br_tl},
-                                                            {tr_bl_tl_br,tr_bl_tl_br,tr_bl_br_tl},
-                                                            {tr_bl_tl_br,tr_bl_tl_br,tr_bl_tl_br},
-                                                            {tr_bl_tl_br,tr_bl_tl_br,tl_br_bl_tr},
-                                                            {tr_bl_tl_br,tr_bl_tl_br,tl_br_tr_bl},
-                                                            {tr_bl_tl_br,tr_bl_tl_br,br_tl_tr_bl},
-                                                            {tr_bl_tl_br,tr_bl_tl_br,br_tl_bl_tr},
-                                                            {tr_bl_tl_br,tr_bl_tl_br,bl_tr_tl_br},
-                                                            {tr_bl_tl_br,tr_bl_tl_br,bl_tr_br_tl},
-                                                            {tr_bl_tl_br,tl_br_bl_tr,tr_bl_br_tl},
-                                                            {tr_bl_tl_br,tl_br_bl_tr,tr_bl_tl_br},
-                                                            {tr_bl_tl_br,tl_br_bl_tr,tl_br_bl_tr},
-                                                            {tr_bl_tl_br,tl_br_bl_tr,tl_br_tr_bl},
-                                                            {tr_bl_tl_br,tl_br_bl_tr,br_tl_tr_bl},
-                                                            {tr_bl_tl_br,tl_br_bl_tr,br_tl_bl_tr},
-                                                            {tr_bl_tl_br,tl_br_bl_tr,bl_tr_tl_br},
-                                                            {tr_bl_tl_br,tl_br_bl_tr,bl_tr_br_tl},
-                                                            {tr_bl_tl_br,tl_br_tr_bl,tr_bl_br_tl},
-                                                            {tr_bl_tl_br,tl_br_tr_bl,tr_bl_tl_br},
-                                                            {tr_bl_tl_br,tl_br_tr_bl,tl_br_bl_tr},
-                                                            {tr_bl_tl_br,tl_br_tr_bl,tl_br_tr_bl},
-                                                            {tr_bl_tl_br,tl_br_tr_bl,br_tl_tr_bl},
-                                                            {tr_bl_tl_br,tl_br_tr_bl,br_tl_bl_tr},
-                                                            {tr_bl_tl_br,tl_br_tr_bl,bl_tr_tl_br},
-                                                            {tr_bl_tl_br,tl_br_tr_bl,bl_tr_br_tl},
-                                                            {tr_bl_tl_br,br_tl_tr_bl,tr_bl_br_tl},
-                                                            {tr_bl_tl_br,br_tl_tr_bl,tr_bl_tl_br},
-                                                            {tr_bl_tl_br,br_tl_tr_bl,tl_br_bl_tr},
-                                                            {tr_bl_tl_br,br_tl_tr_bl,tl_br_tr_bl},
-                                                            {tr_bl_tl_br,br_tl_tr_bl,br_tl_tr_bl},
-                                                            {tr_bl_tl_br,br_tl_tr_bl,br_tl_bl_tr},
-                                                            {tr_bl_tl_br,br_tl_tr_bl,bl_tr_tl_br},
-                                                            {tr_bl_tl_br,br_tl_tr_bl,bl_tr_br_tl},
-                                                            {tr_bl_tl_br,br_tl_bl_tr,tr_bl_br_tl},
-                                                            {tr_bl_tl_br,br_tl_bl_tr,tr_bl_tl_br},
-                                                            {tr_bl_tl_br,br_tl_bl_tr,tl_br_bl_tr},
-                                                            {tr_bl_tl_br,br_tl_bl_tr,tl_br_tr_bl},
-                                                            {tr_bl_tl_br,br_tl_bl_tr,br_tl_tr_bl},
-                                                            {tr_bl_tl_br,br_tl_bl_tr,br_tl_bl_tr},
-                                                            {tr_bl_tl_br,br_tl_bl_tr,bl_tr_tl_br},
-                                                            {tr_bl_tl_br,br_tl_bl_tr,bl_tr_br_tl},
-                                                            {tr_bl_tl_br,bl_tr_tl_br,tr_bl_br_tl},
-                                                            {tr_bl_tl_br,bl_tr_tl_br,tr_bl_tl_br},
-                                                            {tr_bl_tl_br,bl_tr_tl_br,tl_br_bl_tr},
-                                                            {tr_bl_tl_br,bl_tr_tl_br,tl_br_tr_bl},
-                                                            {tr_bl_tl_br,bl_tr_tl_br,br_tl_tr_bl},
-                                                            {tr_bl_tl_br,bl_tr_tl_br,br_tl_bl_tr},
-                                                            {tr_bl_tl_br,bl_tr_tl_br,bl_tr_tl_br},
-                                                            {tr_bl_tl_br,bl_tr_tl_br,bl_tr_br_tl},
-                                                            {tr_bl_tl_br,bl_tr_br_tl,tr_bl_br_tl},
-                                                            {tr_bl_tl_br,bl_tr_br_tl,tr_bl_tl_br},
-                                                            {tr_bl_tl_br,bl_tr_br_tl,tl_br_bl_tr},
-                                                            {tr_bl_tl_br,bl_tr_br_tl,tl_br_tr_bl},
-                                                            {tr_bl_tl_br,bl_tr_br_tl,br_tl_tr_bl},
-                                                            {tr_bl_tl_br,bl_tr_br_tl,br_tl_bl_tr},
-                                                            {tr_bl_tl_br,bl_tr_br_tl,bl_tr_tl_br},
-                                                            {tr_bl_tl_br,bl_tr_br_tl,bl_tr_br_tl},
-                                                            {tl_br_bl_tr,tr_bl_br_tl,tr_bl_br_tl},
-                                                            {tl_br_bl_tr,tr_bl_br_tl,tr_bl_tl_br},
-                                                            {tl_br_bl_tr,tr_bl_br_tl,tl_br_bl_tr},
-                                                            {tl_br_bl_tr,tr_bl_br_tl,tl_br_tr_bl},
-                                                            {tl_br_bl_tr,tr_bl_br_tl,br_tl_tr_bl},
-                                                            {tl_br_bl_tr,tr_bl_br_tl,br_tl_bl_tr},
-                                                            {tl_br_bl_tr,tr_bl_br_tl,bl_tr_tl_br},
-                                                            {tl_br_bl_tr,tr_bl_br_tl,bl_tr_br_tl},
-                                                            {tl_br_bl_tr,tr_bl_tl_br,tr_bl_br_tl},
-                                                            {tl_br_bl_tr,tr_bl_tl_br,tr_bl_tl_br},
-                                                            {tl_br_bl_tr,tr_bl_tl_br,tl_br_bl_tr},
-                                                            {tl_br_bl_tr,tr_bl_tl_br,tl_br_tr_bl},
-                                                            {tl_br_bl_tr,tr_bl_tl_br,br_tl_tr_bl},
-                                                            {tl_br_bl_tr,tr_bl_tl_br,br_tl_bl_tr},
-                                                            {tl_br_bl_tr,tr_bl_tl_br,bl_tr_tl_br},
-                                                            {tl_br_bl_tr,tr_bl_tl_br,bl_tr_br_tl},
-                                                            {tl_br_bl_tr,tl_br_bl_tr,tr_bl_br_tl},
-                                                            {tl_br_bl_tr,tl_br_bl_tr,tr_bl_tl_br},
-                                                            {tl_br_bl_tr,tl_br_bl_tr,tl_br_bl_tr},
-                                                            {tl_br_bl_tr,tl_br_bl_tr,tl_br_tr_bl},
-                                                            {tl_br_bl_tr,tl_br_bl_tr,br_tl_tr_bl},
-                                                            {tl_br_bl_tr,tl_br_bl_tr,br_tl_bl_tr},
-                                                            {tl_br_bl_tr,tl_br_bl_tr,bl_tr_tl_br},
-                                                            {tl_br_bl_tr,tl_br_bl_tr,bl_tr_br_tl},
-                                                            {tl_br_bl_tr,tl_br_tr_bl,tr_bl_br_tl},
-                                                            {tl_br_bl_tr,tl_br_tr_bl,tr_bl_tl_br},
-                                                            {tl_br_bl_tr,tl_br_tr_bl,tl_br_bl_tr},
-                                                            {tl_br_bl_tr,tl_br_tr_bl,tl_br_tr_bl},
-                                                            {tl_br_bl_tr,tl_br_tr_bl,br_tl_tr_bl},
-                                                            {tl_br_bl_tr,tl_br_tr_bl,br_tl_bl_tr},
-                                                            {tl_br_bl_tr,tl_br_tr_bl,bl_tr_tl_br},
-                                                            {tl_br_bl_tr,tl_br_tr_bl,bl_tr_br_tl},
-                                                            {tl_br_bl_tr,br_tl_tr_bl,tr_bl_br_tl},
-                                                            {tl_br_bl_tr,br_tl_tr_bl,tr_bl_tl_br},
-                                                            {tl_br_bl_tr,br_tl_tr_bl,tl_br_bl_tr},
-                                                            {tl_br_bl_tr,br_tl_tr_bl,tl_br_tr_bl},
-                                                            {tl_br_bl_tr,br_tl_tr_bl,br_tl_tr_bl},
-                                                            {tl_br_bl_tr,br_tl_tr_bl,br_tl_bl_tr},
-                                                            {tl_br_bl_tr,br_tl_tr_bl,bl_tr_tl_br},
-                                                            {tl_br_bl_tr,br_tl_tr_bl,bl_tr_br_tl},
-                                                            {tl_br_bl_tr,br_tl_bl_tr,tr_bl_br_tl},
-                                                            {tl_br_bl_tr,br_tl_bl_tr,tr_bl_tl_br},
-                                                            {tl_br_bl_tr,br_tl_bl_tr,tl_br_bl_tr},
-                                                            {tl_br_bl_tr,br_tl_bl_tr,tl_br_tr_bl},
-                                                            {tl_br_bl_tr,br_tl_bl_tr,br_tl_tr_bl},
-                                                            {tl_br_bl_tr,br_tl_bl_tr,br_tl_bl_tr},
-                                                            {tl_br_bl_tr,br_tl_bl_tr,bl_tr_tl_br},
-                                                            {tl_br_bl_tr,br_tl_bl_tr,bl_tr_br_tl},
-                                                            {tl_br_bl_tr,bl_tr_tl_br,tr_bl_br_tl},
-                                                            {tl_br_bl_tr,bl_tr_tl_br,tr_bl_tl_br},
-                                                            {tl_br_bl_tr,bl_tr_tl_br,tl_br_bl_tr},
-                                                            {tl_br_bl_tr,bl_tr_tl_br,tl_br_tr_bl},
-                                                            {tl_br_bl_tr,bl_tr_tl_br,br_tl_tr_bl},
-                                                            {tl_br_bl_tr,bl_tr_tl_br,br_tl_bl_tr},
-                                                            {tl_br_bl_tr,bl_tr_tl_br,bl_tr_tl_br},
-                                                            {tl_br_bl_tr,bl_tr_tl_br,bl_tr_br_tl},
-                                                            {tl_br_bl_tr,bl_tr_br_tl,tr_bl_br_tl},
-                                                            {tl_br_bl_tr,bl_tr_br_tl,tr_bl_tl_br},
-                                                            {tl_br_bl_tr,bl_tr_br_tl,tl_br_bl_tr},
-                                                            {tl_br_bl_tr,bl_tr_br_tl,tl_br_tr_bl},
-                                                            {tl_br_bl_tr,bl_tr_br_tl,br_tl_tr_bl},
-                                                            {tl_br_bl_tr,bl_tr_br_tl,br_tl_bl_tr},
-                                                            {tl_br_bl_tr,bl_tr_br_tl,bl_tr_tl_br},
-                                                            {tl_br_bl_tr,bl_tr_br_tl,bl_tr_br_tl},
-                                                            {tl_br_tr_bl,tr_bl_br_tl,tr_bl_br_tl},
-                                                            {tl_br_tr_bl,tr_bl_br_tl,tr_bl_tl_br},
-                                                            {tl_br_tr_bl,tr_bl_br_tl,tl_br_bl_tr},
-                                                            {tl_br_tr_bl,tr_bl_br_tl,tl_br_tr_bl},
-                                                            {tl_br_tr_bl,tr_bl_br_tl,br_tl_tr_bl},
-                                                            {tl_br_tr_bl,tr_bl_br_tl,br_tl_bl_tr},
-                                                            {tl_br_tr_bl,tr_bl_br_tl,bl_tr_tl_br},
-                                                            {tl_br_tr_bl,tr_bl_br_tl,bl_tr_br_tl},
-                                                            {tl_br_tr_bl,tr_bl_tl_br,tr_bl_br_tl},
-                                                            {tl_br_tr_bl,tr_bl_tl_br,tr_bl_tl_br},
-                                                            {tl_br_tr_bl,tr_bl_tl_br,tl_br_bl_tr},
-                                                            {tl_br_tr_bl,tr_bl_tl_br,tl_br_tr_bl},
-                                                            {tl_br_tr_bl,tr_bl_tl_br,br_tl_tr_bl},
-                                                            {tl_br_tr_bl,tr_bl_tl_br,br_tl_bl_tr},
-                                                            {tl_br_tr_bl,tr_bl_tl_br,bl_tr_tl_br},
-                                                            {tl_br_tr_bl,tr_bl_tl_br,bl_tr_br_tl},
-                                                            {tl_br_tr_bl,tl_br_bl_tr,tr_bl_br_tl},
-                                                            {tl_br_tr_bl,tl_br_bl_tr,tr_bl_tl_br},
-                                                            {tl_br_tr_bl,tl_br_bl_tr,tl_br_bl_tr},
-                                                            {tl_br_tr_bl,tl_br_bl_tr,tl_br_tr_bl},
-                                                            {tl_br_tr_bl,tl_br_bl_tr,br_tl_tr_bl},
-                                                            {tl_br_tr_bl,tl_br_bl_tr,br_tl_bl_tr},
-                                                            {tl_br_tr_bl,tl_br_bl_tr,bl_tr_tl_br},
-                                                            {tl_br_tr_bl,tl_br_bl_tr,bl_tr_br_tl},
-                                                            {tl_br_tr_bl,tl_br_tr_bl,tr_bl_br_tl},
-                                                            {tl_br_tr_bl,tl_br_tr_bl,tr_bl_tl_br},
-                                                            {tl_br_tr_bl,tl_br_tr_bl,tl_br_bl_tr},
-                                                            {tl_br_tr_bl,tl_br_tr_bl,tl_br_tr_bl},
-                                                            {tl_br_tr_bl,tl_br_tr_bl,br_tl_tr_bl},
-                                                            {tl_br_tr_bl,tl_br_tr_bl,br_tl_bl_tr},
-                                                            {tl_br_tr_bl,tl_br_tr_bl,bl_tr_tl_br},
-                                                            {tl_br_tr_bl,tl_br_tr_bl,bl_tr_br_tl},
-                                                            {tl_br_tr_bl,br_tl_tr_bl,tr_bl_br_tl},
-                                                            {tl_br_tr_bl,br_tl_tr_bl,tr_bl_tl_br},
-                                                            {tl_br_tr_bl,br_tl_tr_bl,tl_br_bl_tr},
-                                                            {tl_br_tr_bl,br_tl_tr_bl,tl_br_tr_bl},
-                                                            {tl_br_tr_bl,br_tl_tr_bl,br_tl_tr_bl},
-                                                            {tl_br_tr_bl,br_tl_tr_bl,br_tl_bl_tr},
-                                                            {tl_br_tr_bl,br_tl_tr_bl,bl_tr_tl_br},
-                                                            {tl_br_tr_bl,br_tl_tr_bl,bl_tr_br_tl},
-                                                            {tl_br_tr_bl,br_tl_bl_tr,tr_bl_br_tl},
-                                                            {tl_br_tr_bl,br_tl_bl_tr,tr_bl_tl_br},
-                                                            {tl_br_tr_bl,br_tl_bl_tr,tl_br_bl_tr},
-                                                            {tl_br_tr_bl,br_tl_bl_tr,tl_br_tr_bl},
-                                                            {tl_br_tr_bl,br_tl_bl_tr,br_tl_tr_bl},
-                                                            {tl_br_tr_bl,br_tl_bl_tr,br_tl_bl_tr},
-                                                            {tl_br_tr_bl,br_tl_bl_tr,bl_tr_tl_br},
-                                                            {tl_br_tr_bl,br_tl_bl_tr,bl_tr_br_tl},
-                                                            {tl_br_tr_bl,bl_tr_tl_br,tr_bl_br_tl},
-                                                            {tl_br_tr_bl,bl_tr_tl_br,tr_bl_tl_br},
-                                                            {tl_br_tr_bl,bl_tr_tl_br,tl_br_bl_tr},
-                                                            {tl_br_tr_bl,bl_tr_tl_br,tl_br_tr_bl},
-                                                            {tl_br_tr_bl,bl_tr_tl_br,br_tl_tr_bl},
-                                                            {tl_br_tr_bl,bl_tr_tl_br,br_tl_bl_tr},
-                                                            {tl_br_tr_bl,bl_tr_tl_br,bl_tr_tl_br},
-                                                            {tl_br_tr_bl,bl_tr_tl_br,bl_tr_br_tl},
-                                                            {tl_br_tr_bl,bl_tr_br_tl,tr_bl_br_tl},
-                                                            {tl_br_tr_bl,bl_tr_br_tl,tr_bl_tl_br},
-                                                            {tl_br_tr_bl,bl_tr_br_tl,tl_br_bl_tr},
-                                                            {tl_br_tr_bl,bl_tr_br_tl,tl_br_tr_bl},
-                                                            {tl_br_tr_bl,bl_tr_br_tl,br_tl_tr_bl},
-                                                            {tl_br_tr_bl,bl_tr_br_tl,br_tl_bl_tr},
-                                                            {tl_br_tr_bl,bl_tr_br_tl,bl_tr_tl_br},
-                                                            {tl_br_tr_bl,bl_tr_br_tl,bl_tr_br_tl},
-                                                            {br_tl_tr_bl,tr_bl_br_tl,tr_bl_br_tl},
-                                                            {br_tl_tr_bl,tr_bl_br_tl,tr_bl_tl_br},
-                                                            {br_tl_tr_bl,tr_bl_br_tl,tl_br_bl_tr},
-                                                            {br_tl_tr_bl,tr_bl_br_tl,tl_br_tr_bl},
-                                                            {br_tl_tr_bl,tr_bl_br_tl,br_tl_tr_bl},
-                                                            {br_tl_tr_bl,tr_bl_br_tl,br_tl_bl_tr},
-                                                            {br_tl_tr_bl,tr_bl_br_tl,bl_tr_tl_br},
-                                                            {br_tl_tr_bl,tr_bl_br_tl,bl_tr_br_tl},
-                                                            {br_tl_tr_bl,tr_bl_tl_br,tr_bl_br_tl},
-                                                            {br_tl_tr_bl,tr_bl_tl_br,tr_bl_tl_br},
-                                                            {br_tl_tr_bl,tr_bl_tl_br,tl_br_bl_tr},
-                                                            {br_tl_tr_bl,tr_bl_tl_br,tl_br_tr_bl},
-                                                            {br_tl_tr_bl,tr_bl_tl_br,br_tl_tr_bl},
-                                                            {br_tl_tr_bl,tr_bl_tl_br,br_tl_bl_tr},
-                                                            {br_tl_tr_bl,tr_bl_tl_br,bl_tr_tl_br},
-                                                            {br_tl_tr_bl,tr_bl_tl_br,bl_tr_br_tl},
-                                                            {br_tl_tr_bl,tl_br_bl_tr,tr_bl_br_tl},
-                                                            {br_tl_tr_bl,tl_br_bl_tr,tr_bl_tl_br},
-                                                            {br_tl_tr_bl,tl_br_bl_tr,tl_br_bl_tr},
-                                                            {br_tl_tr_bl,tl_br_bl_tr,tl_br_tr_bl},
-                                                            {br_tl_tr_bl,tl_br_bl_tr,br_tl_tr_bl},
-                                                            {br_tl_tr_bl,tl_br_bl_tr,br_tl_bl_tr},
-                                                            {br_tl_tr_bl,tl_br_bl_tr,bl_tr_tl_br},
-                                                            {br_tl_tr_bl,tl_br_bl_tr,bl_tr_br_tl},
-                                                            {br_tl_tr_bl,tl_br_tr_bl,tr_bl_br_tl},
-                                                            {br_tl_tr_bl,tl_br_tr_bl,tr_bl_tl_br},
-                                                            {br_tl_tr_bl,tl_br_tr_bl,tl_br_bl_tr},
-                                                            {br_tl_tr_bl,tl_br_tr_bl,tl_br_tr_bl},
-                                                            {br_tl_tr_bl,tl_br_tr_bl,br_tl_tr_bl},
-                                                            {br_tl_tr_bl,tl_br_tr_bl,br_tl_bl_tr},
-                                                            {br_tl_tr_bl,tl_br_tr_bl,bl_tr_tl_br},
-                                                            {br_tl_tr_bl,tl_br_tr_bl,bl_tr_br_tl},
-                                                            {br_tl_tr_bl,br_tl_tr_bl,tr_bl_br_tl},
-                                                            {br_tl_tr_bl,br_tl_tr_bl,tr_bl_tl_br},
-                                                            {br_tl_tr_bl,br_tl_tr_bl,tl_br_bl_tr},
-                                                            {br_tl_tr_bl,br_tl_tr_bl,tl_br_tr_bl},
-                                                            {br_tl_tr_bl,br_tl_tr_bl,br_tl_tr_bl},
-                                                            {br_tl_tr_bl,br_tl_tr_bl,br_tl_bl_tr},
-                                                            {br_tl_tr_bl,br_tl_tr_bl,bl_tr_tl_br},
-                                                            {br_tl_tr_bl,br_tl_tr_bl,bl_tr_br_tl},
-                                                            {br_tl_tr_bl,br_tl_bl_tr,tr_bl_br_tl},
-                                                            {br_tl_tr_bl,br_tl_bl_tr,tr_bl_tl_br},
-                                                            {br_tl_tr_bl,br_tl_bl_tr,tl_br_bl_tr},
-                                                            {br_tl_tr_bl,br_tl_bl_tr,tl_br_tr_bl},
-                                                            {br_tl_tr_bl,br_tl_bl_tr,br_tl_tr_bl},
-                                                            {br_tl_tr_bl,br_tl_bl_tr,br_tl_bl_tr},
-                                                            {br_tl_tr_bl,br_tl_bl_tr,bl_tr_tl_br},
-                                                            {br_tl_tr_bl,br_tl_bl_tr,bl_tr_br_tl},
-                                                            {br_tl_tr_bl,bl_tr_tl_br,tr_bl_br_tl},
-                                                            {br_tl_tr_bl,bl_tr_tl_br,tr_bl_tl_br},
-                                                            {br_tl_tr_bl,bl_tr_tl_br,tl_br_bl_tr},
-                                                            {br_tl_tr_bl,bl_tr_tl_br,tl_br_tr_bl},
-                                                            {br_tl_tr_bl,bl_tr_tl_br,br_tl_tr_bl},
-                                                            {br_tl_tr_bl,bl_tr_tl_br,br_tl_bl_tr},
-                                                            {br_tl_tr_bl,bl_tr_tl_br,bl_tr_tl_br},
-                                                            {br_tl_tr_bl,bl_tr_tl_br,bl_tr_br_tl},
-                                                            {br_tl_tr_bl,bl_tr_br_tl,tr_bl_br_tl},
-                                                            {br_tl_tr_bl,bl_tr_br_tl,tr_bl_tl_br},
-                                                            {br_tl_tr_bl,bl_tr_br_tl,tl_br_bl_tr},
-                                                            {br_tl_tr_bl,bl_tr_br_tl,tl_br_tr_bl},
-                                                            {br_tl_tr_bl,bl_tr_br_tl,br_tl_tr_bl},
-                                                            {br_tl_tr_bl,bl_tr_br_tl,br_tl_bl_tr},
-                                                            {br_tl_tr_bl,bl_tr_br_tl,bl_tr_tl_br},
-                                                            {br_tl_tr_bl,bl_tr_br_tl,bl_tr_br_tl},
-                                                            {br_tl_bl_tr,tr_bl_br_tl,tr_bl_br_tl},
-                                                            {br_tl_bl_tr,tr_bl_br_tl,tr_bl_tl_br},
-                                                            {br_tl_bl_tr,tr_bl_br_tl,tl_br_bl_tr},
-                                                            {br_tl_bl_tr,tr_bl_br_tl,tl_br_tr_bl},
-                                                            {br_tl_bl_tr,tr_bl_br_tl,br_tl_tr_bl},
-                                                            {br_tl_bl_tr,tr_bl_br_tl,br_tl_bl_tr},
-                                                            {br_tl_bl_tr,tr_bl_br_tl,bl_tr_tl_br},
-                                                            {br_tl_bl_tr,tr_bl_br_tl,bl_tr_br_tl},
-                                                            {br_tl_bl_tr,tr_bl_tl_br,tr_bl_br_tl},
-                                                            {br_tl_bl_tr,tr_bl_tl_br,tr_bl_tl_br},
-                                                            {br_tl_bl_tr,tr_bl_tl_br,tl_br_bl_tr},
-                                                            {br_tl_bl_tr,tr_bl_tl_br,tl_br_tr_bl},
-                                                            {br_tl_bl_tr,tr_bl_tl_br,br_tl_tr_bl},
-                                                            {br_tl_bl_tr,tr_bl_tl_br,br_tl_bl_tr},
-                                                            {br_tl_bl_tr,tr_bl_tl_br,bl_tr_tl_br},
-                                                            {br_tl_bl_tr,tr_bl_tl_br,bl_tr_br_tl},
-                                                            {br_tl_bl_tr,tl_br_bl_tr,tr_bl_br_tl},
-                                                            {br_tl_bl_tr,tl_br_bl_tr,tr_bl_tl_br},
-                                                            {br_tl_bl_tr,tl_br_bl_tr,tl_br_bl_tr},
-                                                            {br_tl_bl_tr,tl_br_bl_tr,tl_br_tr_bl},
-                                                            {br_tl_bl_tr,tl_br_bl_tr,br_tl_tr_bl},
-                                                            {br_tl_bl_tr,tl_br_bl_tr,br_tl_bl_tr},
-                                                            {br_tl_bl_tr,tl_br_bl_tr,bl_tr_tl_br},
-                                                            {br_tl_bl_tr,tl_br_bl_tr,bl_tr_br_tl},
-                                                            {br_tl_bl_tr,tl_br_tr_bl,tr_bl_br_tl},
-                                                            {br_tl_bl_tr,tl_br_tr_bl,tr_bl_tl_br},
-                                                            {br_tl_bl_tr,tl_br_tr_bl,tl_br_bl_tr},
-                                                            {br_tl_bl_tr,tl_br_tr_bl,tl_br_tr_bl},
-                                                            {br_tl_bl_tr,tl_br_tr_bl,br_tl_tr_bl},
-                                                            {br_tl_bl_tr,tl_br_tr_bl,br_tl_bl_tr},
-                                                            {br_tl_bl_tr,tl_br_tr_bl,bl_tr_tl_br},
-                                                            {br_tl_bl_tr,tl_br_tr_bl,bl_tr_br_tl},
-                                                            {br_tl_bl_tr,br_tl_tr_bl,tr_bl_br_tl},
-                                                            {br_tl_bl_tr,br_tl_tr_bl,tr_bl_tl_br},
-                                                            {br_tl_bl_tr,br_tl_tr_bl,tl_br_bl_tr},
-                                                            {br_tl_bl_tr,br_tl_tr_bl,tl_br_tr_bl},
-                                                            {br_tl_bl_tr,br_tl_tr_bl,br_tl_tr_bl},
-                                                            {br_tl_bl_tr,br_tl_tr_bl,br_tl_bl_tr},
-                                                            {br_tl_bl_tr,br_tl_tr_bl,bl_tr_tl_br},
-                                                            {br_tl_bl_tr,br_tl_tr_bl,bl_tr_br_tl},
-                                                            {br_tl_bl_tr,br_tl_bl_tr,tr_bl_br_tl},
-                                                            {br_tl_bl_tr,br_tl_bl_tr,tr_bl_tl_br},
-                                                            {br_tl_bl_tr,br_tl_bl_tr,tl_br_bl_tr},
-                                                            {br_tl_bl_tr,br_tl_bl_tr,tl_br_tr_bl},
-                                                            {br_tl_bl_tr,br_tl_bl_tr,br_tl_tr_bl},
-                                                            {br_tl_bl_tr,br_tl_bl_tr,br_tl_bl_tr},
-                                                            {br_tl_bl_tr,br_tl_bl_tr,bl_tr_tl_br},
-                                                            {br_tl_bl_tr,br_tl_bl_tr,bl_tr_br_tl},
-                                                            {br_tl_bl_tr,bl_tr_tl_br,tr_bl_br_tl},
-                                                            {br_tl_bl_tr,bl_tr_tl_br,tr_bl_tl_br},
-                                                            {br_tl_bl_tr,bl_tr_tl_br,tl_br_bl_tr},
-                                                            {br_tl_bl_tr,bl_tr_tl_br,tl_br_tr_bl},
-                                                            {br_tl_bl_tr,bl_tr_tl_br,br_tl_tr_bl},
-                                                            {br_tl_bl_tr,bl_tr_tl_br,br_tl_bl_tr},
-                                                            {br_tl_bl_tr,bl_tr_tl_br,bl_tr_tl_br},
-                                                            {br_tl_bl_tr,bl_tr_tl_br,bl_tr_br_tl},
-                                                            {br_tl_bl_tr,bl_tr_br_tl,tr_bl_br_tl},
-                                                            {br_tl_bl_tr,bl_tr_br_tl,tr_bl_tl_br},
-                                                            {br_tl_bl_tr,bl_tr_br_tl,tl_br_bl_tr},
-                                                            {br_tl_bl_tr,bl_tr_br_tl,tl_br_tr_bl},
-                                                            {br_tl_bl_tr,bl_tr_br_tl,br_tl_tr_bl},
-                                                            {br_tl_bl_tr,bl_tr_br_tl,br_tl_bl_tr},
-                                                            {br_tl_bl_tr,bl_tr_br_tl,bl_tr_tl_br},
-                                                            {br_tl_bl_tr,bl_tr_br_tl,bl_tr_br_tl},
-                                                            {bl_tr_tl_br,tr_bl_br_tl,tr_bl_br_tl},
-                                                            {bl_tr_tl_br,tr_bl_br_tl,tr_bl_tl_br},
-                                                            {bl_tr_tl_br,tr_bl_br_tl,tl_br_bl_tr},
-                                                            {bl_tr_tl_br,tr_bl_br_tl,tl_br_tr_bl},
-                                                            {bl_tr_tl_br,tr_bl_br_tl,br_tl_tr_bl},
-                                                            {bl_tr_tl_br,tr_bl_br_tl,br_tl_bl_tr},
-                                                            {bl_tr_tl_br,tr_bl_br_tl,bl_tr_tl_br},
-                                                            {bl_tr_tl_br,tr_bl_br_tl,bl_tr_br_tl},
-                                                            {bl_tr_tl_br,tr_bl_tl_br,tr_bl_br_tl},
-                                                            {bl_tr_tl_br,tr_bl_tl_br,tr_bl_tl_br},
-                                                            {bl_tr_tl_br,tr_bl_tl_br,tl_br_bl_tr},
-                                                            {bl_tr_tl_br,tr_bl_tl_br,tl_br_tr_bl},
-                                                            {bl_tr_tl_br,tr_bl_tl_br,br_tl_tr_bl},
-                                                            {bl_tr_tl_br,tr_bl_tl_br,br_tl_bl_tr},
-                                                            {bl_tr_tl_br,tr_bl_tl_br,bl_tr_tl_br},
-                                                            {bl_tr_tl_br,tr_bl_tl_br,bl_tr_br_tl},
-                                                            {bl_tr_tl_br,tl_br_bl_tr,tr_bl_br_tl},
-                                                            {bl_tr_tl_br,tl_br_bl_tr,tr_bl_tl_br},
-                                                            {bl_tr_tl_br,tl_br_bl_tr,tl_br_bl_tr},
-                                                            {bl_tr_tl_br,tl_br_bl_tr,tl_br_tr_bl},
-                                                            {bl_tr_tl_br,tl_br_bl_tr,br_tl_tr_bl},
-                                                            {bl_tr_tl_br,tl_br_bl_tr,br_tl_bl_tr},
-                                                            {bl_tr_tl_br,tl_br_bl_tr,bl_tr_tl_br},
-                                                            {bl_tr_tl_br,tl_br_bl_tr,bl_tr_br_tl},
-                                                            {bl_tr_tl_br,tl_br_tr_bl,tr_bl_br_tl},
-                                                            {bl_tr_tl_br,tl_br_tr_bl,tr_bl_tl_br},
-                                                            {bl_tr_tl_br,tl_br_tr_bl,tl_br_bl_tr},
-                                                            {bl_tr_tl_br,tl_br_tr_bl,tl_br_tr_bl},
-                                                            {bl_tr_tl_br,tl_br_tr_bl,br_tl_tr_bl},
-                                                            {bl_tr_tl_br,tl_br_tr_bl,br_tl_bl_tr},
-                                                            {bl_tr_tl_br,tl_br_tr_bl,bl_tr_tl_br},
-                                                            {bl_tr_tl_br,tl_br_tr_bl,bl_tr_br_tl},
-                                                            {bl_tr_tl_br,br_tl_tr_bl,tr_bl_br_tl},
-                                                            {bl_tr_tl_br,br_tl_tr_bl,tr_bl_tl_br},
-                                                            {bl_tr_tl_br,br_tl_tr_bl,tl_br_bl_tr},
-                                                            {bl_tr_tl_br,br_tl_tr_bl,tl_br_tr_bl},
-                                                            {bl_tr_tl_br,br_tl_tr_bl,br_tl_tr_bl},
-                                                            {bl_tr_tl_br,br_tl_tr_bl,br_tl_bl_tr},
-                                                            {bl_tr_tl_br,br_tl_tr_bl,bl_tr_tl_br},
-                                                            {bl_tr_tl_br,br_tl_tr_bl,bl_tr_br_tl},
-                                                            {bl_tr_tl_br,br_tl_bl_tr,tr_bl_br_tl},
-                                                            {bl_tr_tl_br,br_tl_bl_tr,tr_bl_tl_br},
-                                                            {bl_tr_tl_br,br_tl_bl_tr,tl_br_bl_tr},
-                                                            {bl_tr_tl_br,br_tl_bl_tr,tl_br_tr_bl},
-                                                            {bl_tr_tl_br,br_tl_bl_tr,br_tl_tr_bl},
-                                                            {bl_tr_tl_br,br_tl_bl_tr,br_tl_bl_tr},
-                                                            {bl_tr_tl_br,br_tl_bl_tr,bl_tr_tl_br},
-                                                            {bl_tr_tl_br,br_tl_bl_tr,bl_tr_br_tl},
-                                                            {bl_tr_tl_br,bl_tr_tl_br,tr_bl_br_tl},
-                                                            {bl_tr_tl_br,bl_tr_tl_br,tr_bl_tl_br},
-                                                            {bl_tr_tl_br,bl_tr_tl_br,tl_br_bl_tr},
-                                                            {bl_tr_tl_br,bl_tr_tl_br,tl_br_tr_bl},
-                                                            {bl_tr_tl_br,bl_tr_tl_br,br_tl_tr_bl},
-                                                            {bl_tr_tl_br,bl_tr_tl_br,br_tl_bl_tr},
-                                                            {bl_tr_tl_br,bl_tr_tl_br,bl_tr_tl_br},
-                                                            {bl_tr_tl_br,bl_tr_tl_br,bl_tr_br_tl},
-                                                            {bl_tr_tl_br,bl_tr_br_tl,tr_bl_br_tl},
-                                                            {bl_tr_tl_br,bl_tr_br_tl,tr_bl_tl_br},
-                                                            {bl_tr_tl_br,bl_tr_br_tl,tl_br_bl_tr},
-                                                            {bl_tr_tl_br,bl_tr_br_tl,tl_br_tr_bl},
-                                                            {bl_tr_tl_br,bl_tr_br_tl,br_tl_tr_bl},
-                                                            {bl_tr_tl_br,bl_tr_br_tl,br_tl_bl_tr},
-                                                            {bl_tr_tl_br,bl_tr_br_tl,bl_tr_tl_br},
-                                                            {bl_tr_tl_br,bl_tr_br_tl,bl_tr_br_tl},
-                                                            {bl_tr_br_tl,tr_bl_br_tl,tr_bl_br_tl},
-                                                            {bl_tr_br_tl,tr_bl_br_tl,tr_bl_tl_br},
-                                                            {bl_tr_br_tl,tr_bl_br_tl,tl_br_bl_tr},
-                                                            {bl_tr_br_tl,tr_bl_br_tl,tl_br_tr_bl},
-                                                            {bl_tr_br_tl,tr_bl_br_tl,br_tl_tr_bl},
-                                                            {bl_tr_br_tl,tr_bl_br_tl,br_tl_bl_tr},
-                                                            {bl_tr_br_tl,tr_bl_br_tl,bl_tr_tl_br},
-                                                            {bl_tr_br_tl,tr_bl_br_tl,bl_tr_br_tl},
-                                                            {bl_tr_br_tl,tr_bl_tl_br,tr_bl_br_tl},
-                                                            {bl_tr_br_tl,tr_bl_tl_br,tr_bl_tl_br},
-                                                            {bl_tr_br_tl,tr_bl_tl_br,tl_br_bl_tr},
-                                                            {bl_tr_br_tl,tr_bl_tl_br,tl_br_tr_bl},
-                                                            {bl_tr_br_tl,tr_bl_tl_br,br_tl_tr_bl},
-                                                            {bl_tr_br_tl,tr_bl_tl_br,br_tl_bl_tr},
-                                                            {bl_tr_br_tl,tr_bl_tl_br,bl_tr_tl_br},
-                                                            {bl_tr_br_tl,tr_bl_tl_br,bl_tr_br_tl},
-                                                            {bl_tr_br_tl,tl_br_bl_tr,tr_bl_br_tl},
-                                                            {bl_tr_br_tl,tl_br_bl_tr,tr_bl_tl_br},
-                                                            {bl_tr_br_tl,tl_br_bl_tr,tl_br_bl_tr},
-                                                            {bl_tr_br_tl,tl_br_bl_tr,tl_br_tr_bl},
-                                                            {bl_tr_br_tl,tl_br_bl_tr,br_tl_tr_bl},
-                                                            {bl_tr_br_tl,tl_br_bl_tr,br_tl_bl_tr},
-                                                            {bl_tr_br_tl,tl_br_bl_tr,bl_tr_tl_br},
-                                                            {bl_tr_br_tl,tl_br_bl_tr,bl_tr_br_tl},
-                                                            {bl_tr_br_tl,tl_br_tr_bl,tr_bl_br_tl},
-                                                            {bl_tr_br_tl,tl_br_tr_bl,tr_bl_tl_br},
-                                                            {bl_tr_br_tl,tl_br_tr_bl,tl_br_bl_tr},
-                                                            {bl_tr_br_tl,tl_br_tr_bl,tl_br_tr_bl},
-                                                            {bl_tr_br_tl,tl_br_tr_bl,br_tl_tr_bl},
-                                                            {bl_tr_br_tl,tl_br_tr_bl,br_tl_bl_tr},
-                                                            {bl_tr_br_tl,tl_br_tr_bl,bl_tr_tl_br},
-                                                            {bl_tr_br_tl,tl_br_tr_bl,bl_tr_br_tl},
-                                                            {bl_tr_br_tl,br_tl_tr_bl,tr_bl_br_tl},
-                                                            {bl_tr_br_tl,br_tl_tr_bl,tr_bl_tl_br},
-                                                            {bl_tr_br_tl,br_tl_tr_bl,tl_br_bl_tr},
-                                                            {bl_tr_br_tl,br_tl_tr_bl,tl_br_tr_bl},
-                                                            {bl_tr_br_tl,br_tl_tr_bl,br_tl_tr_bl},
-                                                            {bl_tr_br_tl,br_tl_tr_bl,br_tl_bl_tr},
-                                                            {bl_tr_br_tl,br_tl_tr_bl,bl_tr_tl_br},
-                                                            {bl_tr_br_tl,br_tl_tr_bl,bl_tr_br_tl},
-                                                            {bl_tr_br_tl,br_tl_bl_tr,tr_bl_br_tl},
-                                                            {bl_tr_br_tl,br_tl_bl_tr,tr_bl_tl_br},
-                                                            {bl_tr_br_tl,br_tl_bl_tr,tl_br_bl_tr},
-                                                            {bl_tr_br_tl,br_tl_bl_tr,tl_br_tr_bl},
-                                                            {bl_tr_br_tl,br_tl_bl_tr,br_tl_tr_bl},
-                                                            {bl_tr_br_tl,br_tl_bl_tr,br_tl_bl_tr},
-                                                            {bl_tr_br_tl,br_tl_bl_tr,bl_tr_tl_br},
-                                                            {bl_tr_br_tl,br_tl_bl_tr,bl_tr_br_tl},
-                                                            {bl_tr_br_tl,bl_tr_tl_br,tr_bl_br_tl},
-                                                            {bl_tr_br_tl,bl_tr_tl_br,tr_bl_tl_br},
-                                                            {bl_tr_br_tl,bl_tr_tl_br,tl_br_bl_tr},
-                                                            {bl_tr_br_tl,bl_tr_tl_br,tl_br_tr_bl},
-                                                            {bl_tr_br_tl,bl_tr_tl_br,br_tl_tr_bl},
-                                                            {bl_tr_br_tl,bl_tr_tl_br,br_tl_bl_tr},
-                                                            {bl_tr_br_tl,bl_tr_tl_br,bl_tr_tl_br},
-                                                            {bl_tr_br_tl,bl_tr_tl_br,bl_tr_br_tl},
-                                                            {bl_tr_br_tl,bl_tr_br_tl,tr_bl_br_tl},
-                                                            {bl_tr_br_tl,bl_tr_br_tl,tr_bl_tl_br},
-                                                            {bl_tr_br_tl,bl_tr_br_tl,tl_br_bl_tr},
-                                                            {bl_tr_br_tl,bl_tr_br_tl,tl_br_tr_bl},
-                                                            {bl_tr_br_tl,bl_tr_br_tl,br_tl_tr_bl},
-                                                            {bl_tr_br_tl,bl_tr_br_tl,br_tl_bl_tr},
-                                                            {bl_tr_br_tl,bl_tr_br_tl,bl_tr_tl_br},
-                                                            {bl_tr_br_tl,bl_tr_br_tl,bl_tr_br_tl}
-
+                                                            {tr_bl_br_tl,tr_bl_br_tl},
+                                                            {tr_bl_br_tl,tr_bl_tl_br},
+                                                            {tr_bl_br_tl,tl_br_bl_tr},
+                                                            {tr_bl_br_tl,tl_br_tr_bl},
+                                                            {tr_bl_br_tl,br_tl_tr_bl},
+                                                            {tr_bl_br_tl,br_tl_bl_tr},
+                                                            {tr_bl_br_tl,bl_tr_tl_br},
+                                                            {tr_bl_br_tl,bl_tr_br_tl},
+                                                            {tr_bl_tl_br,tr_bl_br_tl},
+                                                            {tr_bl_tl_br,tr_bl_tl_br},
+                                                            {tr_bl_tl_br,tl_br_bl_tr},
+                                                            {tr_bl_tl_br,tl_br_tr_bl},
+                                                            {tr_bl_tl_br,br_tl_tr_bl},
+                                                            {tr_bl_tl_br,br_tl_bl_tr},
+                                                            {tr_bl_tl_br,bl_tr_tl_br},
+                                                            {tr_bl_tl_br,bl_tr_br_tl},
+                                                            {tl_br_bl_tr,tr_bl_br_tl},
+                                                            {tl_br_bl_tr,tr_bl_tl_br},
+                                                            {tl_br_bl_tr,tl_br_bl_tr},
+                                                            {tl_br_bl_tr,tl_br_tr_bl},
+                                                            {tl_br_bl_tr,br_tl_tr_bl},
+                                                            {tl_br_bl_tr,br_tl_bl_tr},
+                                                            {tl_br_bl_tr,bl_tr_tl_br},
+                                                            {tl_br_bl_tr,bl_tr_br_tl},
+                                                            {tl_br_tr_bl,tr_bl_br_tl},
+                                                            {tl_br_tr_bl,tr_bl_tl_br},
+                                                            {tl_br_tr_bl,tl_br_bl_tr},
+                                                            {tl_br_tr_bl,tl_br_tr_bl},
+                                                            {tl_br_tr_bl,br_tl_tr_bl},
+                                                            {tl_br_tr_bl,br_tl_bl_tr},
+                                                            {tl_br_tr_bl,bl_tr_tl_br},
+                                                            {tl_br_tr_bl,bl_tr_br_tl},
+                                                            {br_tl_tr_bl,tr_bl_br_tl},
+                                                            {br_tl_tr_bl,tr_bl_tl_br},
+                                                            {br_tl_tr_bl,tl_br_bl_tr},
+                                                            {br_tl_tr_bl,tl_br_tr_bl},
+                                                            {br_tl_tr_bl,br_tl_tr_bl},
+                                                            {br_tl_tr_bl,br_tl_bl_tr},
+                                                            {br_tl_tr_bl,bl_tr_tl_br},
+                                                            {br_tl_tr_bl,bl_tr_br_tl},
+                                                            {br_tl_bl_tr,tr_bl_br_tl},
+                                                            {br_tl_bl_tr,tr_bl_tl_br},
+                                                            {br_tl_bl_tr,tl_br_bl_tr},
+                                                            {br_tl_bl_tr,tl_br_tr_bl},
+                                                            {br_tl_bl_tr,br_tl_tr_bl},
+                                                            {br_tl_bl_tr,br_tl_bl_tr},
+                                                            {br_tl_bl_tr,bl_tr_tl_br},
+                                                            {br_tl_bl_tr,bl_tr_br_tl},
+                                                            {bl_tr_tl_br,tr_bl_br_tl},
+                                                            {bl_tr_tl_br,tr_bl_tl_br},
+                                                            {bl_tr_tl_br,tl_br_bl_tr},
+                                                            {bl_tr_tl_br,tl_br_tr_bl},
+                                                            {bl_tr_tl_br,br_tl_tr_bl},
+                                                            {bl_tr_tl_br,br_tl_bl_tr},
+                                                            {bl_tr_tl_br,bl_tr_tl_br},
+                                                            {bl_tr_tl_br,bl_tr_br_tl},
+                                                            {bl_tr_br_tl,tr_bl_br_tl},
+                                                            {bl_tr_br_tl,tr_bl_tl_br},
+                                                            {bl_tr_br_tl,tl_br_bl_tr},
+                                                            {bl_tr_br_tl,tl_br_tr_bl},
+                                                            {bl_tr_br_tl,br_tl_tr_bl},
+                                                            {bl_tr_br_tl,br_tl_bl_tr},
+                                                            {bl_tr_br_tl,bl_tr_tl_br},
+                                                            {bl_tr_br_tl,bl_tr_br_tl}
                                                            };
 
 
@@ -1639,19 +1015,10 @@ class CrossStitch {
 public:
     vector<string> embroider(vector<string> pattern) {
 
-        function_pointer f_ptr;
-
-        f_ptr = &bl_tr_br_tl;
-
-
-        Point p1;
-        Point p2(-1, -2, -2);
-
-        //cerr << "P1 == p2: " << (p1 == p2) << endl;
+        int pattern_size = pattern.size();
+        cerr << "Pattern size: " << pattern_size << endl;
 
         std::chrono::time_point<std::chrono::system_clock> start, end;
-
-
         start = std::chrono::system_clock::now();
 
 
@@ -1659,63 +1026,29 @@ public:
         // point_collection.eprint_number_of_points_in_each_path();
         point_collection.eprint_average_path_length_of_collection();
 
-
         point_collection.nearest_neighbour_all_path_optimize();
         point_collection.eprint_average_path_length_of_collection();
 
+        //point_collection.next_to_nearest_neighbour_all_path_optimize();
+        //point_collection.eprint_average_path_length_of_collection();
+
+
+        int n_iterations;
+        if (pattern_size <= 10)
+            n_iterations = 1000000;
+        else if (pattern_size > 10 && pattern_size <= 60)
+            n_iterations = 200000;
+        else
+            n_iterations = 10000;
+
+        point_collection.markov_monte_carlo_like_all_path_optimize(n_iterations);
+        point_collection.eprint_average_path_length_of_collection();
 
         point_collection.two_opt_all_path_optimize();
         point_collection.eprint_average_path_length_of_collection();
 
-
-        //point_collection.markov_monte_carlo_like_all_path_optimize();
-        //point_collection.eprint_average_path_length_of_collection();
-
         point_collection.rotate_collection();
         point_collection.eprint_average_path_length_of_collection();
-
-
-        double s = sqrt(2.0);
-        vector<vector<vector<double>>> distance_matrix = {{
-                                                   {LOCAL_INFINITY,   2, s, 2*s, 2},
-                                                   {2,   LOCAL_INFINITY, s,   2, 2*s},
-                                                   {s,   s, LOCAL_INFINITY,   s, s},
-                                                   {2*s, 2, s,   LOCAL_INFINITY, 2},
-                                                   {2, 2*s, s,   2, LOCAL_INFINITY},
-                                                  }};
-
-   
-    /*
-        vector<vector<vector<double>>> distance_matrix = {{
-                                                   {0, 2, 0, 6, 0},
-                                                   {2, 0, 3, 8, 5},
-                                                   {0, 3, 0, 0, 7},
-                                                   {6, 8, 0, 0, 9},
-                                                   {0, 5, 7, 9, 0},
-                                                  }};
-
-   */
-
-        /*
-        vector<vector<vector<double>>> distance_matrix = {{
-                                                   {0,  4, 0, 0, 0, 0, 0, 7, 0},//0
-                                                   {4,  0, 8, 0, 0, 0, 0,11, 0},//1
-                                                   {0,  8, 0, 7, 0, 4, 0, 0, 2},//2
-                                                   {0,  0, 7, 0, 9,14, 0, 0, 0},//3
-                                                   {0,  0, 0, 9, 0,10, 0, 0, 0},//4
-                                                   {0,  0, 4,14,10, 0, 2, 0, 0},//5
-                                                   {0,  0, 0, 0, 0, 2, 0, 1, 6},//6
-                                                   {7, 11, 0, 0, 0, 0, 1, 0, 7},//7
-                                                   {0,  0, 2, 0, 0, 0, 6, 7, 0},//8
-                                                   }};
-
-        */
-
-        int li = 0;
-    
-        vector<Point> path = {Point(), Point(), Point(), Point(), Point()};
-    
-        point_collection.minimal_spannig_tree(path, li, distance_matrix);
 
         //point_collection.eprint_collection();
         //point_collection.eprint_distance_matrixes(1);
