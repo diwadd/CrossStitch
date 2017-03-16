@@ -42,14 +42,13 @@ inline char revert_get_letter_index(int &letter_index){
 
 
 class CPCC {
-    
     // CPCF - Custom Pair Comparison Class
-
     public:
         bool operator() (const pair<double, int> &left, const pair<double, int> &right) {
             return left.first > right.first;
         }
 };
+
 
 //-------------------------------------------------------
 //--------------------Point------------------------------
@@ -94,6 +93,7 @@ bool Point::operator==(const Point &other) {
         return false;
 }
 
+
 double Point::euclidean_distance(Point &p1, Point &p2) {
 
     double x1 = (double)p1.get_x();
@@ -135,7 +135,6 @@ std::ostream& operator<<(std::ostream& os, const Point& p) {
 }
 
 
-
 //-------------------------------------------------------
 //---------------PointCollection-------------------------
 //-------------------------------------------------------
@@ -143,25 +142,21 @@ std::ostream& operator<<(std::ostream& os, const Point& p) {
 
 class PointCollection {
     private:
-
         default_random_engine m_engine;
-
         vector<vector<Point>> m_point_collection;
         vector< vector<vector<double>>> m_distance_matrix;
 
         vector<vector<double>> get_distance_matrix(vector<Point> &path);
-
         vector<int> m_mst_walk;
 
     public:
         PointCollection() {}
         PointCollection(vector<string> &pattern);
 
-
         void eprint_collection();
         void eprint_number_of_points_in_each_path();
         void eprint_distance_matrixes(int letter_index);
-        double eprint_average_path_length_of_collection();
+        void eprint_average_path_length_of_collection();
 
         double get_path_length_in_collection(vector<Point> &path, int &letter_index);
 
@@ -189,7 +184,6 @@ class PointCollection {
         vector<string> make_stitchs(int depth);
 
         void rotate_collection();
-
 };
 
 
@@ -215,7 +209,6 @@ vector<vector<double>> PointCollection::get_distance_matrix(vector<Point> &path)
 
     return M;
 }
-
 
 
 PointCollection::PointCollection(vector<string> &pattern){
@@ -253,7 +246,6 @@ PointCollection::PointCollection(vector<string> &pattern){
 
         m_distance_matrix[letter_index] = get_distance_matrix(m_point_collection[letter_index]);
     }
-
 }
 
 
@@ -276,7 +268,6 @@ void PointCollection::eprint_number_of_points_in_each_path(){
             continue;
         cerr << "Number of " << (char)revert_get_letter_index(letter_index) << " letters: " << n_points << endl;
     }
-
 }
 
 
@@ -289,11 +280,10 @@ void PointCollection::eprint_distance_matrixes(int letter_index){
 
         cerr << endl;
     }
-
 }
 
 
-double PointCollection::eprint_average_path_length_of_collection(){
+void PointCollection::eprint_average_path_length_of_collection(){
 
     double apl = 0.0; // Average Path Length
     double nvp = 0; // number of valid paths
@@ -368,7 +358,6 @@ vector<Point> PointCollection::nearest_neighbour_single_path_optimize(vector<Poi
 }
 
 
-
 vector<Point> PointCollection::next_to_nearest_neighbour_single_path_optimize(vector<Point> &path, int &letter_index){
 
     int n_points = path.size();
@@ -430,8 +419,6 @@ vector<Point> PointCollection::next_to_nearest_neighbour_single_path_optimize(ve
 }
 
 
-
-
 void PointCollection::nearest_neighbour_all_path_optimize(){
 
     for(int letter_index = 0; letter_index < NUMBER_OF_LETTERS; letter_index++){
@@ -443,7 +430,6 @@ void PointCollection::nearest_neighbour_all_path_optimize(){
 }
 
 
-
 void PointCollection::next_to_nearest_neighbour_all_path_optimize(){
 
     for(int letter_index = 0; letter_index < NUMBER_OF_LETTERS; letter_index++){
@@ -453,8 +439,6 @@ void PointCollection::next_to_nearest_neighbour_all_path_optimize(){
         m_point_collection[letter_index] = next_to_nearest_neighbour_single_path_optimize(m_point_collection[letter_index], letter_index);
     }
 }
-
-
 
 
 void PointCollection::minimal_spannig_tree(vector<Point> &path, int &letter_index){
@@ -521,12 +505,13 @@ void PointCollection::minimal_spannig_tree(vector<Point> &path, int &letter_inde
 
     path = minimized_path;
     m_mst_walk.clear();
-
 }
 
 
-
 int PointCollection::walk_graph(int root, int letter_index, vector<vector<int>> &mst_adj_list, vector<bool> &visited_list){
+
+    // Walk along the Minimal Spanning Tree and produce a candidate path.
+    // 
 
     int n = mst_adj_list[root].size();
     if (n == 0 || visited_list[root] == true){
@@ -556,7 +541,6 @@ int PointCollection::walk_graph(int root, int letter_index, vector<vector<int>> 
 }
 
 
-
 void PointCollection::mst_all_path_optimize(){
 
     for(int letter_index = 0; letter_index < NUMBER_OF_LETTERS; letter_index++){
@@ -566,7 +550,6 @@ void PointCollection::mst_all_path_optimize(){
         minimal_spannig_tree(m_point_collection[letter_index], letter_index);
     }
 }
-
 
 
 void PointCollection::two_opt_single_path_optimize(vector<Point> &path, int &letter_index){
@@ -626,8 +609,6 @@ void PointCollection::two_opt_single_path_optimize(vector<Point> &path, int &let
 
         imp++;
     } // while loop end
-
-
 }
 
 
@@ -655,8 +636,8 @@ void PointCollection::point_swap(int &&p1i, int &&p2i, vector<Point> &path){
     path[p2i].set_x( x );
     path[p2i].set_y( y );
     path[p2i].set_b( b );
-
 }
+
 
 void PointCollection::get_swap_points(int &n_points, pair<double, double> &p){
 
@@ -913,8 +894,6 @@ void PointCollection::product_stitch(vector<string> &ret, vector<Point> path, in
                 min_stitch_x = first_stitch_x;
                 min_stitch_y = first_stitch_y;
             }
-
-
         }
 
         ret.push_back(to_string(min_stitch_x[0]) + " " + to_string(min_stitch_y[0]));
@@ -926,7 +905,6 @@ void PointCollection::product_stitch(vector<string> &ret, vector<Point> path, in
         fp_y = min_stitch_y[3];
 
     }
-
 }
 
 
@@ -1044,6 +1022,7 @@ void tr_bl_tl_br(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
 
 }
 
+
 void tl_br_bl_tr(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
 
     stitch_x[0] = x;     // tl_x = x
@@ -1055,8 +1034,8 @@ void tl_br_bl_tr(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
     stitch_y[1] = y + 1; // br_y = y + 1
     stitch_y[2] = y + 1; // bl_y = y + 1
     stitch_y[3] = y;     // tr_y = y
-
 }
+
 
 void tl_br_tr_bl(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
 
@@ -1069,7 +1048,6 @@ void tl_br_tr_bl(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
     stitch_y[1] = y + 1; // br_y = y + 1
     stitch_y[2] = y;     // tr_y = y
     stitch_y[3] = y + 1; // bl_y = y + 1
-
 }
 
 
@@ -1087,6 +1065,7 @@ void br_tl_tr_bl(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
 
 }
 
+
 void br_tl_bl_tr(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
 
     stitch_x[0] = x + 1; // br_x = x + 1
@@ -1098,7 +1077,6 @@ void br_tl_bl_tr(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
     stitch_y[1] = y;     // tl_y = y
     stitch_y[2] = y + 1; // bl_y = y + 1
     stitch_y[3] = y;     // tr_y = y
-
 }
 
 
@@ -1113,8 +1091,8 @@ void bl_tr_tl_br(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
     stitch_y[1] = y;     // tr_y = y
     stitch_y[2] = y;     // tl_y = y
     stitch_y[3] = y + 1; // br_y = y + 1
-
 }
+
 
 void bl_tr_br_tl(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
 
@@ -1127,95 +1105,86 @@ void bl_tr_br_tl(vector<int> &stitch_x, vector<int> &stitch_y, int x, int y){
     stitch_y[1] = y;     // tr_y = y
     stitch_y[2] = y + 1; // br_y = y + 1
     stitch_y[3] = y;     // tl_y = y
-
 }
 
 
 class CrossStitch {
-public:
-    vector<string> embroider(vector<string> pattern) {
+    public:
+        vector<string> embroider(vector<string> pattern) {
 
-        int pattern_size = pattern.size();
-        cerr << "Pattern size: " << pattern_size << endl;
+            int pattern_size = pattern.size();
+            cerr << "Pattern size: " << pattern_size << endl;
 
-        std::chrono::time_point<std::chrono::system_clock> start, end;
-        start = std::chrono::system_clock::now();
-
-
-        PointCollection point_collection(pattern);
-        // point_collection.eprint_number_of_points_in_each_path();
-        point_collection.eprint_average_path_length_of_collection();
-
-        //point_collection.nearest_neighbour_all_path_optimize();
-        //point_collection.eprint_average_path_length_of_collection();
-
-        //point_collection.next_to_nearest_neighbour_all_path_optimize();
-        //point_collection.eprint_average_path_length_of_collection();
-
-        point_collection.mst_all_path_optimize();
-        point_collection.eprint_average_path_length_of_collection();
-
-        int n_iterations;
-        if (pattern_size <= 10)
-            n_iterations = 1000000;
-        else if (pattern_size > 10 && pattern_size <= 60)
-            n_iterations = 200000;
-        else
-            n_iterations = 10000;
-        
-        point_collection.markov_monte_carlo_like_all_path_optimize(n_iterations);
-        point_collection.eprint_average_path_length_of_collection();
-
-        point_collection.two_opt_all_path_optimize();
-        point_collection.eprint_average_path_length_of_collection();
-
-        point_collection.rotate_collection();
-        point_collection.eprint_average_path_length_of_collection();
-
-        //point_collection.eprint_collection();
-        //point_collection.eprint_distance_matrixes(1);
+            std::chrono::time_point<std::chrono::system_clock> start, end;
+            start = std::chrono::system_clock::now();
 
 
+            PointCollection point_collection(pattern);
+            //point_collection.eprint_number_of_points_in_each_path();
+            point_collection.eprint_average_path_length_of_collection();
 
+            point_collection.nearest_neighbour_all_path_optimize();
+            point_collection.eprint_average_path_length_of_collection();
 
+            //point_collection.next_to_nearest_neighbour_all_path_optimize();
+            //point_collection.eprint_average_path_length_of_collection();
 
+            //point_collection.mst_all_path_optimize();
+            //point_collection.eprint_average_path_length_of_collection();
 
+            int n_iterations;
+            if (pattern_size <= 10)
+                n_iterations = 1000000;
+            else if (pattern_size > 10 && pattern_size <= 60)
+                n_iterations = 100000;
+            else
+                n_iterations = 10000;
+            
+            point_collection.markov_monte_carlo_like_all_path_optimize(n_iterations);
+            point_collection.eprint_average_path_length_of_collection();
 
+            point_collection.two_opt_all_path_optimize();
+            point_collection.eprint_average_path_length_of_collection();
 
-        vector<string> ret;
-        bool flag = true;
+            point_collection.rotate_collection();
+            point_collection.eprint_average_path_length_of_collection();
 
-        if (flag == true) {
-            ret = point_collection.make_stitchs(2);
+            //point_collection.eprint_collection();
+            //point_collection.eprint_distance_matrixes(1);
 
-        } else {       
-            int S = pattern.size();
-            // for each color, for each cell (r, c) do two stitches (r+1, c)-(r, c+1)-(r+1, c+1)-(r, c)
-            for (char col = 'a'; col <= 'z'; ++col) {
-                bool first = true;
-                for (int r = 0; r < S; ++r)
-                for (int c = 0; c < S; ++c)
-                    if (pattern[r][c] == col) {
-                        if (first) {
-                            ret.push_back(string(1, col));
-                            first = false;
+            vector<string> ret;
+            bool flag = true; // This flag is used for testing. To be removed.
+
+            if (flag == true) {
+                ret = point_collection.make_stitchs(2);
+
+            } else {       
+                int S = pattern.size();
+                // for each color, for each cell (r, c) do two stitches (r+1, c)-(r, c+1)-(r+1, c+1)-(r, c)
+                for (char col = 'a'; col <= 'z'; ++col) {
+                    bool first = true;
+                    for (int r = 0; r < S; ++r)
+                    for (int c = 0; c < S; ++c)
+                        if (pattern[r][c] == col) {
+                            if (first) {
+                                ret.push_back(string(1, col));
+                                first = false;
+                            }
+                            ret.push_back(to_string(r+1) + " " + to_string(c));
+                            ret.push_back(to_string(r) + " " + to_string(c+1));
+                            ret.push_back(to_string(r+1) + " " + to_string(c+1));
+                            ret.push_back(to_string(r) + " " + to_string(c));
                         }
-                        ret.push_back(to_string(r+1) + " " + to_string(c));
-                        ret.push_back(to_string(r) + " " + to_string(c+1));
-                        ret.push_back(to_string(r+1) + " " + to_string(c+1));
-                        ret.push_back(to_string(r) + " " + to_string(c));
-                    }
+                }
             }
+
+            end = std::chrono::system_clock::now();
+            std::chrono::duration<double> elapsed_seconds_in_main;
+            elapsed_seconds_in_main = end-start;
+            cerr << "elapsed time: " << elapsed_seconds_in_main.count() << endl;
+
+            return ret;
         }
-
-
-        end = std::chrono::system_clock::now();
-        std::chrono::duration<double> elapsed_seconds_in_main;
-        elapsed_seconds_in_main = end-start;
-        cerr << "elapsed time: " << elapsed_seconds_in_main.count() << endl;
-
-        return ret;
-    }
 };
 
 
